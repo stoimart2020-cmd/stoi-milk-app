@@ -1,0 +1,65 @@
+{
+  "name": "server",
+  "version": "1.0.0",
+  "description": "Milk Delivery SaaS Backend",
+  "main": "index.js",
+  "scripts": {
+    "start": "node src/index.js",
+    "dev": "nodemon src/index.js",
+    "test": "jest --coverage --verbose",
+    "test:watch": "jest --watch",
+    "test:unit": "jest --testPathPattern=tests/unit",
+    "test:integration": "jest --testPathPattern=tests/integration",
+    "lint": "eslint src/**/*.js",
+    "lint:fix": "eslint src/**/*.js --fix"
+  },
+  "keywords": [
+    "milk",
+    "delivery",
+    "saas",
+    "subscription"
+  ],
+  "author": "",
+  "license": "ISC",
+  "type": "commonjs",
+  "dependencies": {
+    "archiver": "^7.0.1",
+    "axios": "^1.13.5",
+    "bcryptjs": "^3.0.3",
+    "cookie-parser": "^1.4.7",
+    "cors": "^2.8.5",
+    "dotenv": "^17.2.3",
+    "express": "^5.2.1",
+    "firebase-admin": "^13.6.1",
+    "jsonwebtoken": "^9.0.3",
+    "mongodb-memory-server": "^10.4.1",
+    "mongoose": "^9.0.0",
+    "multer": "^2.0.2",
+    "node-cron": "^4.2.1",
+    "razorpay": "^2.9.6",
+    "sharp": "^0.34.5",
+    "swagger-jsdoc": "^6.2.8",
+    "swagger-ui-express": "^5.0.0",
+    "unzipper": "^0.12.3",
+    "xlsx": "^0.18.5",
+    "zod": "^3.22.4"
+  },
+  "devDependencies": {
+    "eslint": "^8.57.0",
+    "jest": "^29.7.0",
+    "nodemon": "^3.1.11",
+    "supertest": "^6.3.4"
+  },
+  "jest": {
+    "testEnvironment": "node",
+    "coverageDirectory": "coverage",
+    "collectCoverageFrom": [
+      "src/**/*.js",
+      "!src/index.js",
+      "!src/config/**"
+    ],
+    "testMatch": [
+      "**/tests/**/*.test.js"
+    ]
+  }
+}

@@ -1,0 +1,33 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* Mobile sidebar slide-in animation */
+@keyframes slide-in-left {
+  from {
+    transform: translateX(-100%);
+  }
+  to {
+    transform: translateX(0);
+  }
+}
+
+.animate-slide-in-left {
+  animation: slide-in-left 0.25s ease-out;
+}
+
+/* Custom DaisyUI-style teal button */
+.btn-teal {
+  --tw-bg-opacity: 1;
+  background-color: rgb(13 148 136 / var(--tw-bg-opacity)); /* teal-600 */
+  --tw-border-opacity: 1;
+  border-color: rgb(13 148 136 / var(--tw-border-opacity));
+  color: #fff;
+}
+.btn-teal:hover {
+  background-color: rgb(15 118 110); /* teal-700 */
+  border-color: rgb(15 118 110);
+}
+.btn-teal:focus-visible {
+  outline-color: rgb(13 148 136);
+}
