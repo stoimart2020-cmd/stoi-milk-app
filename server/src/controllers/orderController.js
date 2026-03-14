@@ -386,9 +386,10 @@ exports.createBottleCollectionRequest = async (req, res) => {
 exports.getOrders = async (req, res) => {
     try {
         const { scopeCustomerFilter, scopeOrderFilter } = require("../middleware/scope");
-        const { status, page = 1, limit = 20, factory, district, city, hub, stockPoint, area } = req.query;
+        const { status, orderType, page = 1, limit = 20, factory, district, city, hub, stockPoint, area } = req.query;
         let query = {};
         if (status) query.status = status;
+        if (orderType) query.orderType = orderType;
 
         // Logistical Filters (handled by resolving hubs first)
         const hubIds = await resolveHubs({ factory, district, city, area, hub });

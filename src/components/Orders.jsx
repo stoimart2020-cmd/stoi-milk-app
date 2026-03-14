@@ -298,8 +298,8 @@ export const Orders = () => {
     const limit = 20;
 
     const { data: ordersData, isLoading } = useQuery({
-        queryKey: ['orders', filterStatus, page, globalFilters],
-        queryFn: () => getOrders({ status: filterStatus, page, limit, ...globalFilters })
+        queryKey: ['orders', 'ONE_TIME', filterStatus, page, globalFilters],
+        queryFn: () => getOrders({ status: filterStatus, orderType: 'ONE_TIME', page, limit, ...globalFilters })
     });
     const orders = ordersData?.result || [];
     const pagination = ordersData?.pagination || {};
