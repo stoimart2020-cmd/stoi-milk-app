@@ -635,6 +635,30 @@ exports.updateOrderStatus = async (req, res) => {
             } catch (smsErr) {
                 console.error("Delivery SMS failed", smsErr);
             }
+        } else if (status === "cancelled" && order.status !== "cancelled") {
+            // Refund the Wallet if the order was paid via Wallet
+            if (order.paymentStatus === "paid" && (order.paymentMode === "WALLET" || order.paymentMode === "Wallet")) {
+                let customerInstance = await User.findById(order.customer._id);
+                if (customerInstance) {
+                    customerInstance.walletBalance = (customerInstance.walletBalance || 0) + order.totalAmount;
+                    await customerInstance.save();
+
+                    const Transaction = require("../models/Transaction");
+                    await Transaction.create({
+                        user: customerInstance._id,
+                        amount: order.totalAmount,
+                        type: "CREDIT",
+                        mode: "WALLET",
+                        status: "SUCCESS",
+                        description: `Refund for Cancelled Order #${order.orderId || order._id}`,
+                        order: order._id,
+                        performedBy: req.user._id,
+                        balanceAfter: customerInstance.walletBalance
+                    });
+
+                    order.paymentStatus = "refunded";
+                }
+            }
         }
 
         order.status = status;
