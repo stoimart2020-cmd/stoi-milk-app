@@ -12,6 +12,7 @@ import { useAuth } from "../../hook/useAuth";
 import toast from "react-hot-toast";
 import { SpotSaleModal } from "../../components/modals/SpotSaleModal";
 import { RiderCustomersModal } from "../../components/modals/RiderCustomersModal";
+import { axiosInstance } from "../../lib/axios";
 import { RiderRouteModal } from "../../components/modals/RiderRouteModal";
 import { RiderDeliveryDetailModal } from "../../components/modals/RiderDeliveryDetailModal";
 
@@ -300,11 +301,24 @@ export const RiderDashboard = () => {
             setSessionStats(prev => ({ ...prev, elapsedTime: prev.elapsedTime + 1 }));
         }, 1000);
 
+        // Tell backend to start tracking session
+        axiosInstance.post("/api/tracking/start").catch(err => console.error("Could not start tracking session on server:", err));
+
         // Start GPS Location Tracking with accurate distance
         if (navigator.geolocation) {
             locationWatchId.current = navigator.geolocation.watchPosition(
                 (position) => {
-                    const { latitude, longitude } = position.coords;
+                    const { latitude, longitude, accuracy, speed, heading } = position.coords;
+                    
+                    // Send to backend for live tracking
+                    axiosInstance.post("/api/tracking/update-location", {
+                        lat: latitude,
+                        lng: longitude,
+                        accuracy: accuracy || 0,
+                        speed: speed || 0,
+                        heading: heading || 0
+                    }).catch(err => console.error("Failed to update live location:", err));
+
                     if (lastPosition.current) {
                         const dist = calculateDistance(
                             lastPosition.current.lat, lastPosition.current.lon,
@@ -345,6 +359,9 @@ export const RiderDashboard = () => {
         setIsDeliveryStarted(false);
         clearInterval(timerRef.current);
         if (locationWatchId.current) navigator.geolocation.clearWatch(locationWatchId.current);
+
+        // Tell backend to stop tracking session
+        axiosInstance.post("/api/tracking/stop").catch(err => console.error("Could not stop tracking session on server:", err));
 
         // Show end KM modal if log is active
         if (todayKmLog && todayKmLog.status === "active") {
