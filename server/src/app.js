@@ -28,7 +28,19 @@ app.use(cors({
     origin: (origin, callback) => {
         // Allow requests with no origin (like mobile apps or curl requests)
         if (!origin) return callback(null, true);
-        if (origin.startsWith('http://localhost') || origin.startsWith('http://127.0.0.1')) {
+        
+        const allowedOrigins = [
+            'http://localhost',
+            'http://127.0.0.1',
+            'http://172.232.115.60',
+            'https://stoimilk.com',
+            'http://stoimilk.com',
+            'https://www.stoimilk.com',
+            'http://www.stoimilk.com',
+        ];
+        
+        const isAllowed = allowedOrigins.some(allowed => origin.startsWith(allowed));
+        if (isAllowed) {
             return callback(null, true);
         }
         callback(new Error('Not allowed by CORS'));
