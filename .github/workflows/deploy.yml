@@ -1,44 +1,28 @@
-name: Deploy to Linode Production
+name: Deploy STOI Milk App
 
 on:
   push:
     branches:
       - main
-  workflow_dispatch:
 
 jobs:
   deploy:
     runs-on: ubuntu-latest
 
     steps:
-      - name: Deploy to Server via SSH
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Deploy to server
         uses: appleboy/ssh-action@v1.0.3
         with:
-          host: ${{ secrets.LINODE_HOST }}
-          username: ${{ secrets.LINODE_USERNAME }}
-          key: ${{ secrets.LINODE_SSH_KEY }}
+          host: ${{ secrets.SERVER_HOST }}
+          username: ${{ secrets.SERVER_USER }}
+          key: ${{ secrets.SERVER_SSH_KEY }}
+          port: 22
           script: |
-            echo "Deploying Stoi Milk App..."
-
-            # Navigate to the project directory
             cd /var/www/stoi-milk-app
-
-            # Pull the latest code
-            git fetch origin main
-            git reset --hard origin/main
-
-            # Install frontend dependencies and build
-            echo "Building frontend..."
+            git pull
             npm install
             npm run build
-
-            # Install backend dependencies
-            echo "Updating backend dependencies..."
-            cd server
-            npm install
-
-            # Restart the backend service
-            echo "Restarting PM2 backend service..."
-            pm2 reload stoi-backend || pm2 restart stoi-backend
-
-            echo "Deployment successful! 🚀"
+            pm2 restart all
