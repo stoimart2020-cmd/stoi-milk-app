@@ -10,6 +10,11 @@ const {
     logout,
     updateFcmToken,
     firebaseVerifyOtp,
+    checkUserStatus,
+    loginWithPin,
+    setPin,
+    changePin,
+    verifyTwoStep,
 } = require("../controllers/authController");
 const { protect } = require("../middleware/auth");
 
@@ -23,6 +28,12 @@ router.post("/super-admin-login", superAdminLogin);
 router.get("/current-admin", protect, getCurrentAdmin);
 router.post("/logout", logout);
 router.post("/update-fcm-token", protect, updateFcmToken);
+
+router.post("/check-status", checkUserStatus);
+router.post("/login-pin", loginWithPin);
+router.post("/set-pin", protect, setPin);
+router.post("/change-pin", protect, changePin);
+router.post("/verify-2fa", verifyTwoStep);
 
 
 module.exports = router;

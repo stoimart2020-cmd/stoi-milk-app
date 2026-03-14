@@ -128,6 +128,39 @@ const settingsSchema = new mongoose.Schema(
             fromEmail: { type: String, default: "" },
             fromName: { type: String, default: "" },
             enabled: { type: Boolean, default: false },
+            // Notification Triggers
+            sendWelcomeEmail: { type: Boolean, default: true },
+            sendSubscriptionEmail: { type: Boolean, default: true },
+            sendPaymentEmail: { type: Boolean, default: true },
+            sendInvoiceEmail: { type: Boolean, default: true },
+            sendMonthlyInvoiceEmail: { type: Boolean, default: true },
+            templates: {
+                welcome: {
+                    subject: { type: String, default: "" },
+                    body: { type: String, default: "" },
+                    footer: { type: String, default: "" }
+                },
+                subscription: {
+                    subject: { type: String, default: "" },
+                    body: { type: String, default: "" },
+                    footer: { type: String, default: "" }
+                },
+                customerPayment: {
+                    subject: { type: String, default: "" },
+                    body: { type: String, default: "" },
+                    footer: { type: String, default: "" }
+                },
+                invoice: {
+                    subject: { type: String, default: "" },
+                    body: { type: String, default: "" },
+                    footer: { type: String, default: "" }
+                },
+                monthlyInvoice: {
+                    subject: { type: String, default: "" },
+                    body: { type: String, default: "" },
+                    footer: { type: String, default: "" }
+                }
+            }
         },
 
         // WhatsApp Settings

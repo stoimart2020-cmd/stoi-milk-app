@@ -115,3 +115,8 @@ export const updateRiderRouteSelf = async (route) => {
     const { data } = await axiosInstance.put("/api/riders/my/route", { route });
     return data;
 };
+
+export const getRiderTempOtp = async (id) => {
+    const { data } = await axiosInstance.get(`/api/riders/${id}/temp-otp`);
+    return data;
+};

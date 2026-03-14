@@ -6,6 +6,7 @@ const Transaction = require("../models/Transaction");
 const { createNotification } = require("./notificationController");
 const { logAction } = require("./activityLogController");
 const { resolveHubs } = require("../utils/logisticsHelper");
+const { sendInvoiceNotification } = require("../utils/notification");
 
 exports.createOrder = async (req, res) => {
     try {
@@ -323,6 +324,13 @@ exports.createOrder = async (req, res) => {
             req
         );
 
+        // --- AUTOMATIC INVOICE NOTIFICATION ---
+        try {
+            await sendInvoiceNotification(customer, order);
+        } catch (notifErr) {
+            console.error("Failed to send order invoice notification", notifErr);
+        }
+
         res.status(201).json({
             success: true,
             message: isWalletPayment
@@ -545,28 +553,45 @@ exports.updateOrderStatus = async (req, res) => {
 
             // If cash/cheque collected, apply robust logic to Wallets
             if (previousStatus !== "paid") {
-                let customerInstance = await User.findById(order.customer._id);
-                if (customerInstance && (order.paymentMode === "Cash" || order.paymentMode === "CASH")) {
-                    // Start by charging the customer for the order they are receiving
-                    customerInstance.walletBalance = (customerInstance.walletBalance || 0) - order.totalAmount;
+                let customerInstance = await User.findById(order.customer._id || order.customer);
+                if (customerInstance) {
+                    const mode = (order.paymentMode || "").toUpperCase();
+                    if (mode === "WALLET") {
+                        // Re-deduct from wallet
+                        customerInstance.walletBalance = Number(customerInstance.walletBalance || 0) - Number(order.totalAmount);
+                        await customerInstance.save();
 
-                    // Add inputs of whatever they paid
-                    const cashCollectedValue = (cashAmount !== undefined && cashAmount !== "") ? Number(cashAmount) : order.totalAmount;
-                    const chequeValue = (chequeAmount !== undefined && chequeAmount !== "") ? Number(chequeAmount) : 0;
+                        const Transaction = require("../models/Transaction");
+                        await Transaction.create({
+                            user: customerInstance._id,
+                            amount: order.totalAmount,
+                            type: "DEBIT",
+                            mode: "WALLET",
+                            status: "SUCCESS",
+                            description: `Payment for Delivered Order #${order.orderId || order._id}`,
+                            order: order._id,
+                            performedBy: req.user._id,
+                            balanceAfter: customerInstance.walletBalance
+                        });
+                    } else if (order.paymentMode === "Cash" || order.paymentMode === "CASH") {
+                        // Start by charging the customer for the order they are receiving
+                        customerInstance.walletBalance = (customerInstance.walletBalance || 0) - order.totalAmount;
 
-                    customerInstance.walletBalance += (cashCollectedValue + chequeValue);
-                    await customerInstance.save();
+                        const cashCollectedValue = (cashAmount !== undefined && cashAmount !== "") ? Number(cashAmount) : order.totalAmount;
+                        const chequeValue = (chequeAmount !== undefined && chequeAmount !== "") ? Number(chequeAmount) : 0;
 
-                    order.cashCollected = cashCollectedValue;
-                    order.chequeCollected = chequeValue;
+                        customerInstance.walletBalance += (cashCollectedValue + chequeValue);
+                        await customerInstance.save();
 
-                    // Rider gets the cash into their Outstanding Account
-                    const Employee = require("../models/Employee");
-                    const rider = await Employee.findById(req.user._id);
-                    if (rider && cashCollectedValue > 0) {
-                        rider.walletBalance = (rider.walletBalance || 0) + cashCollectedValue;
-                        await rider.save();
-                        console.log(`Rider ${rider.name} outstanding wallet incremented by ${cashCollectedValue} (Cash Delivery)`);
+                        order.cashCollected = cashCollectedValue;
+                        order.chequeCollected = chequeValue;
+
+                        const Employee = require("../models/Employee");
+                        const rider = await Employee.findById(req.user._id);
+                        if (rider && cashCollectedValue > 0) {
+                            rider.walletBalance = (rider.walletBalance || 0) + cashCollectedValue;
+                            await rider.save();
+                        }
                     }
                 }
             }
@@ -637,10 +662,11 @@ exports.updateOrderStatus = async (req, res) => {
             }
         } else if (status === "cancelled" && order.status !== "cancelled") {
             // Refund the Wallet if the order was paid via Wallet
-            if (order.paymentStatus === "paid" && (order.paymentMode === "WALLET" || order.paymentMode === "Wallet")) {
-                let customerInstance = await User.findById(order.customer._id);
+            const mode = (order.paymentMode || "").toUpperCase();
+            if (order.paymentStatus === "paid" && mode === "WALLET") {
+                let customerInstance = await User.findById(order.customer._id || order.customer);
                 if (customerInstance) {
-                    customerInstance.walletBalance = (customerInstance.walletBalance || 0) + order.totalAmount;
+                    customerInstance.walletBalance = Number(customerInstance.walletBalance || 0) + Number(order.totalAmount);
                     await customerInstance.save();
 
                     const Transaction = require("../models/Transaction");
@@ -730,15 +756,68 @@ exports.updateOrder = async (req, res) => {
             assignedRider,
         } = req.body;
 
-        const order = await Order.findById(id).populate('customer', 'name');
+        const order = await Order.findById(id).populate('customer');
         if (!order) {
             return res.status(404).json({ success: false, message: "Order not found" });
         }
 
-        // ── Scalar fields ─────────────────────────────────────────────────────
+        const oldStatus = order.status;
+        const oldPaymentStatus = order.paymentStatus;
+        const mode = (paymentMode || order.paymentMode || "").toUpperCase();
+
+        // ── Transition & Wallet Logic (BEFORE field updates) ──────────────────
+        if (status === "delivered" && oldStatus !== "delivered") {
+            // Re-deduct from wallet if it was not previously paid
+            if (oldPaymentStatus !== "paid" && oldPaymentStatus !== "Paid") {
+                let customerInstance = await User.findById(order.customer._id || order.customer);
+                if (customerInstance && mode === "WALLET") {
+                    customerInstance.walletBalance = Number(customerInstance.walletBalance || 0) - Number(order.totalAmount);
+                    await customerInstance.save();
+                    
+                    const Transaction = require("../models/Transaction");
+                    await Transaction.create({
+                        user: customerInstance._id,
+                        amount: order.totalAmount,
+                        type: "DEBIT",
+                        mode: "WALLET",
+                        status: "SUCCESS",
+                        description: `Payment for Delivered Order #${order.orderId || order._id}`,
+                        order: order._id,
+                        performedBy: req.user._id,
+                        balanceAfter: customerInstance.walletBalance
+                    });
+                    order.paymentStatus = "paid";
+                }
+            }
+        } else if (status === "cancelled" && oldStatus !== "cancelled") {
+            // Refund wallet if moving to cancelled and it was paid
+            if ((oldPaymentStatus === "paid" || oldPaymentStatus === "Paid") && mode === "WALLET") {
+                let customerInstance = await User.findById(order.customer._id || order.customer);
+                if (customerInstance) {
+                    customerInstance.walletBalance = Number(customerInstance.walletBalance || 0) + Number(order.totalAmount);
+                    await customerInstance.save();
+
+                    const Transaction = require("../models/Transaction");
+                    await Transaction.create({
+                        user: customerInstance._id,
+                        amount: order.totalAmount,
+                        type: "CREDIT",
+                        mode: "WALLET",
+                        status: "SUCCESS",
+                        description: `Refund for Cancelled Order #${order.orderId || order._id}`,
+                        order: order._id,
+                        performedBy: req.user._id,
+                        balanceAfter: customerInstance.walletBalance
+                    });
+                    order.paymentStatus = "refunded";
+                }
+            }
+        }
+
+        // ── Scalar fields update ──────────────────────────────────────────────
         if (deliveryDate) order.deliveryDate = new Date(deliveryDate);
         if (status) order.status = status;
-        if (paymentStatus) order.paymentStatus = paymentStatus;
+        if (paymentStatus && !order.isModified('paymentStatus')) order.paymentStatus = paymentStatus;
         if (paymentMode) order.paymentMode = paymentMode;
         if (notes !== undefined) order.notes = notes;
         if (assignedRider) order.assignedRider = assignedRider || null;

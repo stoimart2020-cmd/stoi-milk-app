@@ -2,6 +2,7 @@ import { useState } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { queryClient } from "../lib/queryClient";
 import { axiosInstance } from "../lib/axios";
+import { getHubs } from "../lib/api/logistics";
 
 const getSettings = async () => {
     const response = await axiosInstance.get("/api/settings");
@@ -47,6 +48,7 @@ export const Settings = () => {
         { id: "order", label: "🚚 Order & Delivery", icon: "🚚" },
         { id: "referral", label: "🎁 Referral", icon: "🎁" },
         { id: "firebase", label: "🔥 Firebase", icon: "🔥" },
+        { id: "manualEmail", label: "📤 Manual Mailer", icon: "📤" },
     ];
 
     if (isLoading) {
@@ -109,6 +111,7 @@ export const Settings = () => {
                             {activeTab === "order" && <OrderSettings settings={settings.order} onSave={(data) => mutation.mutate({ section: "order", data })} />}
                             {activeTab === "referral" && <ReferralSettings settings={settings.referral} onSave={(data) => mutation.mutate({ section: "referral", data })} />}
                             {activeTab === "firebase" && <FirebaseSettings settings={settings.firebase} onSave={(data) => mutation.mutate({ section: "firebase", data })} />}
+                            {activeTab === "manualEmail" && <ManualEmailSettings settings={settings} />}
                         </div>
                     </div>
                 </div>
@@ -169,6 +172,9 @@ const FileUpload = ({ label, value, onUpload }) => {
 
 // Site Customization Settings
 const SiteSettings = ({ settings = {}, onSave }) => {
+    const { data: hubsData } = useQuery({ queryKey: ["hubs"], queryFn: getHubs });
+    const hubs = hubsData?.result || [];
+
     const [form, setForm] = useState({
         // Company Details
         companyName: settings.companyName || "Jefvi Agro Products Private Limited",
@@ -333,11 +339,13 @@ const SiteSettings = ({ settings = {}, onSave }) => {
                         </div>
                         <div className="form-control">
                             <label className="label">Select Default Hub</label>
-                            <select className="select select-bordered" value={form.defaultHub} onChange={(e) => setForm({ ...form, defaultHub: e.target.value })}>
+                             <select className="select select-bordered" value={form.defaultHub} onChange={(e) => setForm({ ...form, defaultHub: e.target.value })}>
                                 <option value="">Select Hub</option>
-                                <option value="Nagercoil">Nagercoil</option>
-                                <option value="Trivandrum">Trivandrum</option>
-                                <option value="Chennai">Chennai</option>
+                                {hubs.map((hub) => (
+                                    <option key={hub._id || hub.id} value={hub.name}>
+                                        {hub.name}
+                                    </option>
+                                ))}
                             </select>
                         </div>
                         <div className="form-control">
@@ -888,7 +896,45 @@ const EmailSettings = ({ settings = {}, onSave }) => {
         password: "",
         fromEmail: settings.fromEmail || "",
         fromName: settings.fromName || "",
+        // Triggers
+        sendWelcomeEmail: settings.sendWelcomeEmail ?? true,
+        sendSubscriptionEmail: settings.sendSubscriptionEmail ?? true,
+        sendPaymentEmail: settings.sendPaymentEmail ?? true,
+        sendInvoiceEmail: settings.sendInvoiceEmail ?? true,
+        sendMonthlyInvoiceEmail: settings.sendMonthlyInvoiceEmail ?? true,
+        templates: {
+            welcome: {
+                subject: settings.templates?.welcome?.subject || "",
+                body: settings.templates?.welcome?.body || "",
+                footer: settings.templates?.welcome?.footer || ""
+            },
+            subscription: {
+                subject: settings.templates?.subscription?.subject || "",
+                body: settings.templates?.subscription?.body || "",
+                footer: settings.templates?.subscription?.footer || ""
+            },
+            customerPayment: {
+                subject: settings.templates?.customerPayment?.subject || "",
+                body: settings.templates?.customerPayment?.body || "",
+                footer: settings.templates?.customerPayment?.footer || ""
+            },
+            invoice: {
+                subject: settings.templates?.invoice?.subject || "",
+                body: settings.templates?.invoice?.body || "",
+                footer: settings.templates?.invoice?.footer || ""
+            },
+            monthlyInvoice: {
+                subject: settings.templates?.monthlyInvoice?.subject || "",
+                body: settings.templates?.monthlyInvoice?.body || "",
+                footer: settings.templates?.monthlyInvoice?.footer || ""
+            }
+        }
     });
+
+    const [testEmailId, setTestEmailId] = useState("");
+    const [testing, setTesting] = useState(false);
+
+    const [showPassword, setShowPassword] = useState(false);
 
     const handleSave = () => {
         const cleanForm = { ...form };
@@ -896,20 +942,91 @@ const EmailSettings = ({ settings = {}, onSave }) => {
         onSave(cleanForm);
     };
 
+    const updateTemplate = (type, field, value) => {
+        setForm(prev => ({
+            ...prev,
+            templates: {
+                ...prev.templates,
+                [type]: {
+                    ...prev.templates[type],
+                    [field]: value
+                }
+            }
+        }));
+    };
+
+    const handleTestEmail = async () => {
+        if (!testEmailId) return alert("Please enter an email ID");
+        setTesting(true);
+        try {
+            const response = await axiosInstance.post("/api/settings/test-email", { email: testEmailId });
+            alert(response.data.message || "Test email sent!");
+        } catch (error) {
+            alert(error.response?.data?.message || "Failed to send test email");
+        } finally {
+            setTesting(false);
+        }
+    };
+
+    const TemplateCard = ({ title, type, variables }) => (
+        <div className="card bg-base-50 p-4 border space-y-3">
+            <h4 className="font-bold text-lg border-b pb-2">{title}</h4>
+            
+            <div>
+                <label className="label text-xs uppercase font-semibold text-gray-500">Email Subject</label>
+                <input 
+                    type="text" 
+                    className="input input-bordered w-full" 
+                    value={form.templates[type].subject} 
+                    onChange={(e) => updateTemplate(type, 'subject', e.target.value)}
+                    placeholder="Enter email subject..."
+                />
+            </div>
+
+            <div>
+                <label className="label text-xs uppercase font-semibold text-gray-500">Email Body (HTML)</label>
+                <textarea 
+                    className="textarea textarea-bordered w-full h-32 font-mono text-sm"
+                    value={form.templates[type].body} 
+                    onChange={(e) => updateTemplate(type, 'body', e.target.value)}
+                    placeholder="Enter main HTML body content..."
+                />
+            </div>
+
+            <div>
+                <label className="label text-xs uppercase font-semibold text-gray-500">Email Footer (Optional)</label>
+                <textarea 
+                    className="textarea textarea-bordered w-full h-20 font-mono text-sm"
+                    value={form.templates[type].footer} 
+                    onChange={(e) => updateTemplate(type, 'footer', e.target.value)}
+                    placeholder="Enter HTML footer content..."
+                />
+            </div>
+
+            <div className="text-xs text-gray-500 bg-base-200 p-2 rounded">
+                <strong>Available Variables:</strong> {variables}
+            </div>
+        </div>
+    );
+
     return (
-        <div className="space-y-4">
+        <div className="space-y-6">
             <h2 className="text-xl font-bold">📧 Email Settings</h2>
 
-            <label className="flex items-center gap-3 cursor-pointer">
+            <div className="flex items-center justify-between p-4 bg-base-100 rounded-lg border">
+                <div>
+                    <h3 className="font-semibold">Enable Email Service</h3>
+                    <p className="text-sm text-gray-500">Send automated email notifications</p>
+                </div>
                 <input type="checkbox" className="toggle toggle-success" checked={form.enabled} onChange={(e) => setForm({ ...form, enabled: e.target.checked })} />
-                <span className={form.enabled ? "text-success font-bold" : ""}>{form.enabled ? "Enabled" : "Disabled"}</span>
-            </label>
+            </div>
 
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div className={`grid grid-cols-1 md:grid-cols-2 gap-4 ${!form.enabled ? 'opacity-50 pointer-events-none' : ''}`}>
+                <div className="md:col-span-2 divider font-semibold">SMTP Configuration</div>
                 <div>
                     <label className="label">Provider</label>
                     <select className="select select-bordered w-full" value={form.provider} onChange={(e) => setForm({ ...form, provider: e.target.value })}>
-                        <option value="smtp">SMTP</option>
+                        <option value="smtp">SMTP (Recommended)</option>
                         <option value="sendgrid">SendGrid</option>
                         <option value="mailgun">Mailgun</option>
                         <option value="ses">AWS SES</option>
@@ -933,7 +1050,31 @@ const EmailSettings = ({ settings = {}, onSave }) => {
 
                 <div>
                     <label className="label">Password</label>
-                    <input type="password" className="input input-bordered w-full" value={form.password} onChange={(e) => setForm({ ...form, password: e.target.value })} />
+                    <div className="relative">
+                        <input 
+                            type={showPassword ? "text" : "password"} 
+                            className="input input-bordered w-full pr-10" 
+                            placeholder="••••••••" 
+                            value={form.password} 
+                            onChange={(e) => setForm({ ...form, password: e.target.value })} 
+                        />
+                        <button 
+                            type="button" 
+                            className="absolute inset-y-0 right-0 pr-3 flex items-center text-gray-500"
+                            onClick={() => setShowPassword(!showPassword)}
+                        >
+                            {showPassword ? (
+                                <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className="w-5 h-5">
+                                    <path strokeLinecap="round" strokeLinejoin="round" d="M3.98 8.223A10.477 10.477 0 0 0 1.934 12C3.226 16.338 7.244 19.5 12 19.5c.993 0 1.953-.138 2.863-.395M6.228 6.228A10.451 10.451 0 0 1 12 4.5c4.756 0 8.773 3.162 10.065 7.498a10.522 10.522 0 0 1-4.293 5.774M6.228 6.228 3 3m3.228 3.228 3.65 3.65m7.894 7.894L21 21m-3.228-3.228-3.65-3.65m0 0a3 3 0 1 0-4.243-4.243m4.242 4.242L9.88 9.88" />
+                                </svg>
+                            ) : (
+                                <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className="w-5 h-5">
+                                    <path strokeLinecap="round" strokeLinejoin="round" d="M2.036 12.322a1.012 1.012 0 0 1 0-.644C3.399 8.049 7.21 4.5 12 4.5c4.791 0 8.601 3.549 9.963 7.178.07.186.07.389 0 .575C20.601 15.951 16.79 19.5 12 19.5c-4.791 0-8.601-3.549-9.963-7.178Z" />
+                                    <path strokeLinecap="round" strokeLinejoin="round" d="M15 12a3 3 0 1 1-6 0 3 3 0 0 1 6 0Z" />
+                                </svg>
+                            )}
+                        </button>
+                    </div>
                 </div>
 
                 <div>
@@ -941,15 +1082,183 @@ const EmailSettings = ({ settings = {}, onSave }) => {
                     <input type="email" className="input input-bordered w-full" placeholder="noreply@example.com" value={form.fromEmail} onChange={(e) => setForm({ ...form, fromEmail: e.target.value })} />
                 </div>
 
-                <div>
+                <div className="md:col-span-2">
                     <label className="label">From Name</label>
                     <input type="text" className="input input-bordered w-full" placeholder="STOI Milk" value={form.fromName} onChange={(e) => setForm({ ...form, fromName: e.target.value })} />
                 </div>
+
+                {/* Email Triggers */}
+                <div className="md:col-span-2 divider font-semibold">Notification Triggers</div>
+                
+                <div className="md:col-span-2 grid grid-cols-1 sm:grid-cols-2 gap-4">
+                    <label className="flex items-center gap-3 cursor-pointer p-3 bg-base-200 rounded-lg">
+                        <input type="checkbox" className="checkbox checkbox-primary" checked={form.sendWelcomeEmail} onChange={(e) => setForm({ ...form, sendWelcomeEmail: e.target.checked })} />
+                        <div className="flex flex-col">
+                            <span className="font-medium">Welcome Signup</span>
+                            <span className="text-xs text-gray-500">Sent on user registration</span>
+                        </div>
+                    </label>
+
+                    <label className="flex items-center gap-3 cursor-pointer p-3 bg-base-200 rounded-lg">
+                        <input type="checkbox" className="checkbox checkbox-primary" checked={form.sendSubscriptionEmail} onChange={(e) => setForm({ ...form, sendSubscriptionEmail: e.target.checked })} />
+                        <div className="flex flex-col">
+                            <span className="font-medium">New Subscription</span>
+                            <span className="text-xs text-gray-500">Sent when a subscription starts</span>
+                        </div>
+                    </label>
+
+                    <label className="flex items-center gap-3 cursor-pointer p-3 bg-base-200 rounded-lg">
+                        <input type="checkbox" className="checkbox checkbox-primary" checked={form.sendPaymentEmail} onChange={(e) => setForm({ ...form, sendPaymentEmail: e.target.checked })} />
+                        <div className="flex flex-col">
+                            <span className="font-medium">Payment Done</span>
+                            <span className="text-xs text-gray-500">Sent on wallet recharge</span>
+                        </div>
+                    </label>
+
+                    <label className="flex items-center gap-3 cursor-pointer p-3 bg-base-200 rounded-lg">
+                        <input type="checkbox" className="checkbox checkbox-primary" checked={form.sendInvoiceEmail} onChange={(e) => setForm({ ...form, sendInvoiceEmail: e.target.checked })} />
+                        <div className="flex flex-col">
+                            <span className="font-medium">Invoice Generated</span>
+                            <span className="text-xs text-gray-500">Sent on daily order creation</span>
+                        </div>
+                    </label>
+
+                    <label className="flex items-center gap-3 cursor-pointer p-3 bg-base-200 rounded-lg">
+                        <input type="checkbox" className="checkbox checkbox-primary" checked={form.sendMonthlyInvoiceEmail} onChange={(e) => setForm({ ...form, sendMonthlyInvoiceEmail: e.target.checked })} />
+                        <div className="flex flex-col">
+                            <span className="font-medium">Monthly Statement</span>
+                            <span className="text-xs text-gray-500">Sent on monthly closing</span>
+                        </div>
+                    </label>
+                </div>
+
+                {/* Email Templates */}
+                <div className="md:col-span-2 divider font-semibold">Email Templates (HTML supported)</div>
+
+                <div className="md:col-span-2 space-y-6">
+                    <TemplateCard title="👋 Welcome Message" type="welcome" variables="{name}, {mobile}, {walletBalance}, {siteName}, {primaryColor}" />
+                    <TemplateCard title="📦 Subscription Started" type="subscription" variables="{name}, {mobile}, {walletBalance}, {product}, {qty}, {date}, {siteName}, {primaryColor}" />
+                    <TemplateCard title="💰 Payment Received" type="customerPayment" variables="{name}, {mobile}, {walletBalance}, {amount}, {txnId}, {siteName}, {primaryColor}" />
+                    <TemplateCard title="📄 Daily Invoice Notification" type="invoice" variables="{name}, {mobile}, {walletBalance}, {orderId}, {amount}, {date}, {siteName}, {primaryColor}" />
+                    <TemplateCard title="📊 Monthly Statement Summary" type="monthlyInvoice" variables="{name}, {mobile}, {walletBalance}, {statementNo}, {period}, {closingBalance}, {siteName}, {primaryColor}" />
+                </div>
             </div>
 
-            <div className="flex gap-2">
-                <button className="btn btn-primary" onClick={handleSave}>💾 Save Changes</button>
-                <button className="btn btn-outline" onClick={() => alert("Test email sent!")}>📤 Send Test Email</button>
+            <div className="flex flex-col sm:flex-row gap-4 pt-4 border-t">
+                <button className="btn btn-primary" onClick={handleSave}>💾 Save Email Settings</button>
+                
+                <div className="flex-1 flex gap-2">
+                    <input 
+                        type="email" 
+                        placeholder="Test email address" 
+                        className="input input-bordered flex-1" 
+                        value={testEmailId}
+                        onChange={(e) => setTestEmailId(e.target.value)}
+                    />
+                    <button 
+                        className={`btn btn-outline ${testing ? 'loading' : ''}`} 
+                        onClick={handleTestEmail}
+                        disabled={testing || !form.enabled}
+                    >
+                        📤 Send Test Mail
+                    </button>
+                </div>
+            </div>
+        </div>
+    );
+};
+
+// Manual Email Tool
+const ManualEmailSettings = ({ settings }) => {
+    const [email, setEmail] = useState("");
+    const [subject, setSubject] = useState("");
+    const [message, setMessage] = useState("");
+    const [sending, setSending] = useState(false);
+
+    const handleSend = async () => {
+        if (!email || !subject || !message) return alert("Please fill all fields");
+        setSending(true);
+        try {
+            const response = await axiosInstance.post("/api/settings/send-email", {
+                to: email,
+                subject,
+                html: message
+            });
+            alert(response.data.message || "Email sent successfully!");
+            setEmail("");
+            setSubject("");
+            setMessage("");
+        } catch (error) {
+            alert(error.response?.data?.message || "Failed to send email");
+        } finally {
+            setSending(false);
+        }
+    };
+
+    return (
+        <div className="space-y-6">
+            <h2 className="text-xl font-bold">📤 Manual Email Composer</h2>
+            <p className="text-sm text-gray-500">Send custom one-off emails to any address using your configured SMTP settings.</p>
+            
+            <div className="card bg-base-100 p-6 border shadow-sm space-y-4">
+                <div className="form-control">
+                    <label className="label font-semibold">Recipient Email</label>
+                    <input 
+                        type="email" 
+                        className="input input-bordered w-full" 
+                        placeholder="customer@example.com"
+                        value={email}
+                        onChange={(e) => setEmail(e.target.value)}
+                    />
+                </div>
+
+                <div className="form-control">
+                    <label className="label font-semibold">Subject</label>
+                    <input 
+                        type="text" 
+                        className="input input-bordered w-full" 
+                        placeholder="Important Notice regarding your account"
+                        value={subject}
+                        onChange={(e) => setSubject(e.target.value)}
+                    />
+                </div>
+
+                <div className="form-control">
+                    <label className="label font-semibold">Message Body (HTML Supported)</label>
+                    <textarea 
+                        className="textarea textarea-bordered w-full h-80 font-mono text-sm"
+                        placeholder="<h1>Hello!</h1> <p>This is a custom message sent from the admin panel.</p>"
+                        value={message}
+                        onChange={(e) => setMessage(e.target.value)}
+                    />
+                    <label className="label">
+                        <span className="label-text-alt text-gray-400">You can use HTML tags for better formatting.</span>
+                    </label>
+                </div>
+
+                <div className="pt-2">
+                    <button 
+                        className={`btn btn-primary w-full ${sending ? 'loading' : ''}`}
+                        onClick={handleSend}
+                        disabled={sending || !settings.email?.enabled}
+                    >
+                        {sending ? "Sending..." : "🚀 Send Email Now"}
+                    </button>
+                    {!settings.email?.enabled && (
+                        <p className="text-error text-xs text-center mt-2">
+                            ⚠️ Email service is currently disabled. Please enable it in the Email Settings tab.
+                        </p>
+                    )}
+                </div>
+            </div>
+
+            <div className="bg-blue-50 p-4 rounded-lg border border-blue-100">
+                <h4 className="font-bold text-blue-800 text-sm mb-1">Quick Tips:</h4>
+                <ul className="text-xs text-blue-700 list-disc list-inside space-y-1">
+                    <li>Use <code>&lt;br&gt;</code> for line breaks.</li>
+                    <li>Use <code>&lt;b&gt;text&lt;/b&gt;</code> for bolding.</li>
+                    <li>Verify the recipient's email address before clicking send.</li>
+                </ul>
             </div>
         </div>
     );

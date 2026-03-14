@@ -494,12 +494,11 @@ exports.getTempOtp = async (req, res) => {
             return res.status(404).json({ success: false, message: "Customer not found" });
         }
 
-        // If OTP exists and not expired, return it. Otherwise generate new.
-        let otp = user.otp;
-        if (!otp || !user.otpExpires || user.otpExpires < Date.now()) {
+        // Use the dedicated temporaryOtp field
+        let otp = user.temporaryOtp;
+        if (!otp) {
             otp = Math.floor(1000 + Math.random() * 9000).toString();
-            user.otp = otp;
-            user.otpExpires = Date.now() + 30 * 60 * 1000; // 30 mins for temp otp
+            user.temporaryOtp = otp;
             await user.save();
         }
 

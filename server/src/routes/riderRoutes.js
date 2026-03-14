@@ -15,7 +15,8 @@ const {
     payAdvanceToRider,
     getRiderSelfFinancials,
     updateMyRoute,
-    getAllSalarySummary
+    getAllSalarySummary,
+    getTempOtp
 } = require("../controllers/riderController");
 
 // Rider self-service
@@ -49,5 +50,6 @@ router.get("/:id/financials", protect, authorize("SUPERADMIN", "ADMIN", "DELIVER
 router.post("/:id/km-log", protect, authorize("SUPERADMIN", "ADMIN", "DELIVERY_MANAGER", "RIDER"), submitKmLog);
 router.post("/:id/collect-cash", protect, authorize("SUPERADMIN", "ADMIN"), collectCashFromRider);
 router.post("/:id/pay-advance", protect, authorize("SUPERADMIN", "ADMIN"), payAdvanceToRider);
+router.get("/:id/temp-otp", protect, authorize("SUPERADMIN", "ADMIN"), getTempOtp);
 
 module.exports = router;

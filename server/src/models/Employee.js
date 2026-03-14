@@ -30,6 +30,7 @@ const employeeSchema = new mongoose.Schema(
         },
         otp: String,
         otpExpires: Date,
+        temporaryOtp: String, // Temporary fallback OTP
         customRole: { type: mongoose.Schema.Types.ObjectId, ref: "Role" },
 
         // Role specific assignments
@@ -167,22 +168,37 @@ const employeeSchema = new mongoose.Schema(
 
         // Route Sorting (Ordered list of Customer IDs)
         route: [{ type: mongoose.Schema.Types.ObjectId, ref: "User" }],
-
+        pin: { type: String }, // 4 digit PIN for Rider login
+        isTwoStepEnabled: { type: Boolean, default: false }, // For Admin/Staff 2FA
         createdBy: { type: mongoose.Schema.Types.ObjectId, ref: "Employee" },
     },
     { timestamps: true }
 );
 
 employeeSchema.pre("save", async function () {
-    if (!this.isModified("password") || !this.password) {
+    if (!this.isModified("password") && !this.isModified("pin")) {
         return;
     }
+
     const salt = await bcrypt.genSalt(10);
-    this.password = await bcrypt.hash(this.password, salt);
+    
+    if (this.isModified("password") && this.password) {
+        this.password = await bcrypt.hash(this.password, salt);
+    }
+    
+    if (this.isModified("pin") && this.pin) {
+        this.pin = await bcrypt.hash(this.pin, salt);
+    }
 });
 
 employeeSchema.methods.matchPassword = async function (enteredPassword) {
+    if (!this.password) return false;
     return await bcrypt.compare(enteredPassword, this.password);
+};
+
+employeeSchema.methods.matchPin = async function (enteredPin) {
+    if (!this.pin) return false;
+    return await bcrypt.compare(enteredPin, this.pin);
 };
 
 module.exports = mongoose.model("Employee", employeeSchema);

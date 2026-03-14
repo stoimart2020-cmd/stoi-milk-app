@@ -1,5 +1,47 @@
 const Settings = require("../models/Settings");
 const { admin } = require("../config/firebase");
+const nodemailer = require("nodemailer");
+
+// Generic Email Sender
+exports.sendEmail = async (to, subject, html) => {
+    if (!to) return { success: false, error: "Recipient email missing" };
+    try {
+        const settings = await Settings.getSettings();
+        if (!settings.email?.enabled) {
+            console.log("[EMAIL DISABLED] Would send to:", to, "Subject:", subject);
+            return { success: false, error: "Email service is disabled in settings" };
+        }
+
+        const transporter = nodemailer.createTransport({
+            host: settings.email.host,
+            port: settings.email.port,
+            secure: settings.email.port === 465,
+            auth: {
+                user: settings.email.username,
+                pass: settings.email.password,
+            },
+            tls: {
+                // Do not fail on invalid certs (common for cPanel testing/self-signed)
+                rejectUnauthorized: false
+            },
+            connectionTimeout: 10000, // 10 seconds
+        });
+
+        const mailOptions = {
+            from: `"${settings.email.fromName || settings.site.siteName}" <${settings.email.fromEmail}>`,
+            to,
+            subject,
+            html,
+        };
+
+        const info = await transporter.sendMail(mailOptions);
+        console.log(`[EMAIL SENT] To: ${to}, MsgID: ${info.messageId}`);
+        return { success: true, messageId: info.messageId };
+    } catch (error) {
+        console.error("Email Failed:", error.message);
+        return { success: false, error: error.message };
+    }
+};
 
 // Push Notifications via FCM
 exports.sendPushNotification = async (fcmToken, title, body, data = {}) => {
@@ -199,6 +241,52 @@ exports.sendWelcome = async (user) => {
             await exports.sendWhatsApp(user.mobile, message);
         }
 
+        // Email
+        console.log(`[DEBUG] Email Check for Welcome:`, {
+            email: user.email,
+            enabled: settings.email?.enabled,
+            trigger: settings.email?.sendWelcomeEmail
+        });
+        if (user.email && settings.email?.enabled && settings.email?.sendWelcomeEmail) {
+            const template = settings.email.templates?.welcome;
+            const emailData = { 
+                ...data, 
+                name: user.name,
+                mobile: user.mobile,
+                walletBalance: user.walletBalance?.toFixed(2) || "0.00",
+                siteName: settings.site.siteName, 
+                primaryColor: settings.site.primaryColor || '#14b8a6' 
+            };
+
+            let subject = formatMessage(template?.subject, emailData) || `Welcome to ${settings.site.siteName}!`;
+            let html = "";
+            
+            if (template?.body) {
+                const body = formatMessage(template.body, emailData);
+                const footer = formatMessage(template.footer, emailData) || `<p style="margin-top: 20px;">Best Regards,<br/>Team ${settings.site.siteName}</p>`;
+                html = `<div style="font-family: sans-serif; padding: 20px; color: #333;">${body}${footer}</div>`;
+            } else {
+                html = `
+                    <div style="font-family: sans-serif; padding: 20px; color: #333;">
+                        <h2 style="color: ${settings.site.primaryColor || '#14b8a6'};">Welcome, ${user.name}!</h2>
+                        <p>We're thrilled to have you at <strong>${settings.site.siteName}</strong>.</p>
+                        <p>Your journey to fresh, high-quality milk delivered daily starts here.</p>
+                        <div style="margin: 20px 0; padding: 15px; background: #f0fdfa; border-radius: 8px;">
+                            <strong>Next Steps:</strong>
+                            <ul style="margin-top: 10px;">
+                                <li>Explore our products</li>
+                                <li>Start a subscription</li>
+                                <li>Enjoy fresh milk daily!</li>
+                            </ul>
+                        </div>
+                        <p>If you have any questions, feel free to reply to this email or contact us via our website.</p>
+                        <p>Best Regards,<br/>Team ${settings.site.siteName}</p>
+                    </div>
+                `;
+            }
+            await exports.sendEmail(user.email, subject, html);
+        }
+
     } catch (error) {
         console.error("Welcome Notification Error:", error.message);
     }
@@ -229,6 +317,48 @@ exports.sendSubscriptionStart = async (user, product, qty, startDate) => {
             await exports.sendWhatsApp(user.mobile, message);
         }
 
+        // Email
+        console.log(`[DEBUG] Email Check for Subscription:`, {
+            email: user.email,
+            enabled: settings.email?.enabled,
+            trigger: settings.email?.sendSubscriptionEmail
+        });
+        if (user.email && settings.email?.enabled && settings.email?.sendSubscriptionEmail) {
+            const template = settings.email.templates?.subscription;
+            const emailData = { 
+                ...data, 
+                name: user.name,
+                mobile: user.mobile,
+                walletBalance: user.walletBalance?.toFixed(2) || "0.00",
+                siteName: settings.site.siteName, 
+                primaryColor: settings.site.primaryColor || '#14b8a6' 
+            };
+
+            let subject = formatMessage(template?.subject, emailData) || "Subscription Started - STOI Milk";
+            let html = "";
+
+            if (template?.body) {
+                const body = formatMessage(template.body, emailData);
+                const footer = formatMessage(template.footer, emailData) || `<p style="margin-top: 20px;">Best Regards,<br/>Team ${settings.site.siteName}</p>`;
+                html = `<div style="font-family: sans-serif; padding: 20px; color: #333;">${body}${footer}</div>`;
+            } else {
+                html = `
+                    <div style="font-family: sans-serif; padding: 20px; color: #333;">
+                        <h2 style="color: ${settings.site.primaryColor || '#14b8a6'};">Hello, ${user.name}!</h2>
+                        <p>Exciting news! Your subscription for <strong>${data.product}</strong> has successfully started.</p>
+                        <div style="margin: 20px 0; padding: 15px; border: 1px solid #e5e7eb; border-radius: 8px;">
+                            <p style="margin: 5px 0;"><strong>Product:</strong> ${data.product}</p>
+                            <p style="margin: 5px 0;"><strong>Quantity:</strong> ${data.qty}</p>
+                            <p style="margin: 5px 0;"><strong>Start Date:</strong> ${data.date}</p>
+                        </div>
+                        <p>Your fresh milk will be delivered according to your preference. Thank you for choosing us!</p>
+                        <p>Best Regards,<br/>Team ${settings.site.siteName}</p>
+                    </div>
+                `;
+            }
+            await exports.sendEmail(user.email, subject, html);
+        }
+
     } catch (error) {
         console.error("Subscription Notification Error:", error.message);
     }
@@ -256,6 +386,42 @@ exports.sendCustomerPaymentSuccess = async (user, amount, txnId) => {
             const template = settings.whatsapp.templates?.customerPayment || "Dear {name}, payment of Rs.{amount} received successfully. Txn ID: {txnId}. - Stoi";
             const message = formatMessage(template, data);
             await exports.sendWhatsApp(user.mobile, message);
+        }
+
+        // Email
+        if (user.email && settings.email?.enabled && settings.email?.sendPaymentEmail) {
+            const template = settings.email.templates?.customerPayment;
+            const emailData = { 
+                ...data, 
+                name: user.name,
+                mobile: user.mobile,
+                walletBalance: user.walletBalance?.toFixed(2) || amount,
+                siteName: settings.site.siteName, 
+                primaryColor: settings.site.primaryColor || '#14b8a6' 
+            };
+
+            let subject = formatMessage(template?.subject, emailData) || "Payment Success Confirmation";
+            let html = "";
+
+            if (template?.body) {
+                const body = formatMessage(template.body, emailData);
+                const footer = formatMessage(template.footer, emailData) || `<p style="margin-top: 20px;">Best Regards,<br/>Team ${settings.site.siteName}</p>`;
+                html = `<div style="font-family: sans-serif; padding: 20px; color: #333;">${body}${footer}</div>`;
+            } else {
+                html = `
+                    <div style="font-family: sans-serif; padding: 20px; color: #333;">
+                        <h2 style="color: ${settings.site.primaryColor || '#14b8a6'};">Payment Received!</h2>
+                        <p>Dear ${user.name}, we have successfully received your payment of <strong>₹${amount}</strong>.</p>
+                        <p style="font-size: 0.9em; color: #666;">Transaction ID: ${txnId || 'N/A'}</p>
+                        <div style="margin: 20px 0; padding: 15px; background: #f0fdfa; border-radius: 8px; text-align: center;">
+                            <h3 style="margin: 0; color: #0d9488;">New Wallet Balance: ₹${user.walletBalance?.toFixed(2) || amount}</h3>
+                        </div>
+                        <p>Thank you for your timely payment. It helps us continue providing you with the freshest milk!</p>
+                        <p>Best Regards,<br/>Team ${settings.site.siteName}</p>
+                    </div>
+                `;
+            }
+            await exports.sendEmail(user.email, subject, html);
         }
 
     } catch (error) {
@@ -289,5 +455,161 @@ exports.sendDeliveryNotification = async (user, order) => {
 
     } catch (error) {
         console.error("Delivery Notification Error:", error.message);
+    }
+};
+
+exports.sendInvoiceNotification = async (user, order) => {
+    try {
+        const settings = await Settings.getSettings();
+
+        const data = {
+            name: user.name,
+            orderId: order.orderId || order._id,
+            amount: order.totalAmount,
+            date: new Date(order.deliveryDate).toLocaleDateString()
+        };
+
+        // SMS
+        if (settings.smsGateway.enabled) {
+            const message = `Dear ${data.name}, invoice for order ${data.orderId} of Rs.${data.amount} has been generated. - Stoi`;
+            await exports.sendSMS(user.mobile, message);
+        }
+
+        // WhatsApp
+        if (settings.whatsapp?.enabled) {
+             const message = `Dear ${data.name}, invoice for order ${data.orderId} of Rs.${data.amount} has been generated. - Stoi`;
+            await exports.sendWhatsApp(user.mobile, message);
+        }
+
+        // Email
+        if (user.email && settings.email?.enabled && settings.email?.sendInvoiceEmail) {
+            const template = settings.email.templates?.invoice;
+            const emailData = { 
+                ...data, 
+                name: user.name,
+                mobile: user.mobile,
+                walletBalance: user.walletBalance?.toFixed(2) || "0.00",
+                siteName: settings.site.siteName, 
+                primaryColor: settings.site.primaryColor || '#14b8a6' 
+            };
+
+            let subject = formatMessage(template?.subject, emailData) || `Order Invoice - ${data.orderId}`;
+            let html = "";
+
+            if (template?.body) {
+                const body = formatMessage(template.body, emailData);
+                const footer = formatMessage(template.footer, emailData) || `<p style="margin-top: 20px;">Best Regards,<br/>Team ${settings.site.siteName}</p>`;
+                html = `<div style="font-family: sans-serif; padding: 20px; color: #333;">${body}${footer}</div>`;
+            } else {
+                const itemsHtml = order.products?.map(p => `
+                    <tr>
+                        <td style="padding: 10px; border-bottom: 1px solid #eee;">${p.product?.name || 'Item'}</td>
+                        <td style="padding: 10px; border-bottom: 1px solid #eee; text-align: center;">${p.quantity}</td>
+                        <td style="padding: 10px; border-bottom: 1px solid #eee; text-align: right;">₹${(p.price * p.quantity).toFixed(2)}</td>
+                    </tr>
+                `).join("") || "";
+
+                html = `
+                    <div style="font-family: sans-serif; padding: 20px; color: #333;">
+                        <h2 style="color: ${settings.site.primaryColor || '#14b8a6'};">New Invoice Generated</h2>
+                        <p>Dear ${user.name}, an invoice has been generated for your order on <strong>${data.date}</strong>.</p>
+                        
+                        <table style="width: 100%; border-collapse: collapse; margin: 20px 0;">
+                            <thead>
+                                <tr style="background: #f9fafb;">
+                                    <th style="padding: 10px; text-align: left; border-bottom: 2px solid #e5e7eb;">Product</th>
+                                    <th style="padding: 10px; text-align: center; border-bottom: 2px solid #e5e7eb;">Qty</th>
+                                    <th style="padding: 10px; text-align: right; border-bottom: 2px solid #e5e7eb;">Total</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                ${itemsHtml}
+                            </tbody>
+                            <tfoot>
+                                <tr>
+                                    <td colspan="2" style="padding: 15px 10px; text-align: right; font-weight: bold;">Grand Total:</td>
+                                    <td style="padding: 15px 10px; text-align: right; font-weight: bold; color: #0d9488;">₹${data.amount.toFixed(2)}</td>
+                                </tr>
+                            </tfoot>
+                        </table>
+
+                        <p>Order ID: <strong>${data.orderId}</strong></p>
+                        <p>Thank you for choosing ${settings.site.siteName}!</p>
+                        <p>Best Regards,<br/>Team ${settings.site.siteName}</p>
+                    </div>
+                `;
+            }
+            await exports.sendEmail(user.email, subject, html);
+        }
+    } catch (error) {
+        console.error("Invoice Notification Error:", error.message);
+    }
+};
+
+exports.sendMonthlyInvoiceNotification = async (user, invoice) => {
+    try {
+        const settings = await Settings.getSettings();
+
+        const data = {
+            name: user.name,
+            statementNo: invoice.statementNo,
+            period: invoice.period?.display,
+            payable: invoice.totalPayable,
+            closingBalance: invoice.walletSummary?.balanceAsOn
+        };
+
+        // SMS
+        if (settings.smsGateway.enabled) {
+            const message = `Dear ${data.name}, your monthly statement ${data.statementNo} for ${data.period} is generated. Closing Balance: Rs.${data.closingBalance}. - Stoi`;
+            await exports.sendSMS(user.mobile, message);
+        }
+
+        // WhatsApp
+        if (settings.whatsapp?.enabled) {
+            const message = `Dear ${data.name}, your monthly statement ${data.statementNo} for ${data.period} is generated. Closing Balance: Rs.${data.closingBalance}. - Stoi`;
+            await exports.sendWhatsApp(user.mobile, message);
+        }
+
+        // Email
+        if (user.email && settings.email?.enabled && settings.email?.sendMonthlyInvoiceEmail) {
+            const template = settings.email.templates?.monthlyInvoice;
+            const emailData = { 
+                ...data, 
+                name: user.name,
+                mobile: user.mobile,
+                walletBalance: user.walletBalance?.toFixed(2) || "0.00",
+                siteName: settings.site.siteName, 
+                primaryColor: settings.site.primaryColor || '#14b8a6' 
+            };
+
+            let subject = formatMessage(template?.subject, emailData) || `Monthly Statement - ${data.statementNo}`;
+            let html = "";
+
+            if (template?.body) {
+                const body = formatMessage(template.body, emailData);
+                const footer = formatMessage(template.footer, emailData) || `<p style="margin-top: 20px;">Best Regards,<br/>Team ${settings.site.siteName}</p>`;
+                html = `<div style="font-family: sans-serif; padding: 20px; color: #333;">${body}${footer}</div>`;
+            } else {
+                html = `
+                    <div style="font-family: sans-serif; padding: 20px; color: #333;">
+                        <h2 style="color: ${settings.site.primaryColor || '#14b8a6'};">Monthly Statement Generated</h2>
+                        <p>Dear ${user.name}, your monthly statement for <strong>${data.period}</strong> is now available.</p>
+                        
+                        <div style="margin: 20px 0; padding: 20px; background: #f9fafb; border-radius: 8px; border-left: 4px solid ${settings.site.primaryColor || '#14b8a6'};">
+                            <p style="margin: 5px 0;"><strong>Statement No:</strong> ${data.statementNo}</p>
+                            <p style="margin: 5px 0;"><strong>Period:</strong> ${data.period}</p>
+                            <p style="margin: 5px 0;"><strong>Closing Balance:</strong> <span style="color: ${data.closingBalance >= 0 ? '#0d9488' : '#e11d48'}">₹${data.closingBalance?.toFixed(2)}</span></p>
+                        </div>
+
+                        <p>You can view the detailed breakdown and download the PDF by logging into your account.</p>
+                        <p>Thank you for being a valued customer of ${settings.site.siteName}!</p>
+                        <p>Best Regards,<br/>Team ${settings.site.siteName}</p>
+                    </div>
+                `;
+            }
+            await exports.sendEmail(user.email, subject, html);
+        }
+    } catch (error) {
+        console.error("Monthly Invoice Notification Error:", error.message);
     }
 };

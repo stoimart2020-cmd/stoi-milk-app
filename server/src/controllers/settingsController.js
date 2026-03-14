@@ -169,3 +169,75 @@ exports.testPaymentGateway = async (req, res) => {
         res.status(500).json({ success: false, message: error.message });
     }
 };
+
+exports.sendEmail = async (req, res) => {
+    try {
+        const { to, subject, html } = req.body;
+        const settings = await Settings.getSettings();
+
+        if (!settings.email.enabled) {
+            return res.status(400).json({ success: false, message: "Email service is not enabled" });
+        }
+
+        const { sendEmail } = require("../utils/notification");
+        const result = await sendEmail(to, subject, html);
+        
+        if (result.success) {
+            res.status(200).json({ success: true, message: "Email sent successfully" });
+        } else {
+            res.status(500).json({ 
+                success: false, 
+                message: `Failed to send email: ${result.error || "Unknown error"}` 
+            });
+        }
+    } catch (error) {
+        res.status(500).json({ success: false, message: error.message });
+    }
+};
+
+exports.testEmail = async (req, res) => {
+    try {
+        const { email } = req.body;
+        const settings = await Settings.getSettings();
+
+        if (!settings.email.enabled) {
+            return res.status(400).json({ success: false, message: "Email service is not enabled" });
+        }
+
+        const { sendEmail } = require("../utils/notification");
+        
+        const subject = `Test Email from ${settings.site.siteName}`;
+        const html = `
+            <div style="font-family: sans-serif; padding: 20px; color: #333;">
+                <h2 style="color: ${settings.site.primaryColor || '#14b8a6'};">Email Configuration Test</h2>
+                <p>Hello,</p>
+                <p>If you are reading this, your email configuration for <strong>${settings.site.siteName}</strong> is working correctly!</p>
+                <div style="margin: 20px 0; padding: 15px; background: #f9fafb; border: 1px solid #ddd; border-radius: 8px;">
+                    <strong>Configuration Details:</strong>
+                    <ul style="margin-top: 10px;">
+                        <li><strong>Host:</strong> ${settings.email.host}</li>
+                        <li><strong>Port:</strong> ${settings.email.port}</li>
+                        <li><strong>From Name:</strong> ${settings.email.fromName}</li>
+                        <li><strong>From Email:</strong> ${settings.email.fromEmail}</li>
+                    </ul>
+                </div>
+                <p>Sent on: ${new Date().toLocaleString()}</p>
+                <p>Best Regards,<br/>System Administrator</p>
+            </div>
+        `;
+
+        const result = await sendEmail(email, subject, html);
+        
+        if (result.success) {
+            res.status(200).json({ success: true, message: "Test email sent successfully" });
+        } else {
+            res.status(500).json({ 
+                success: false, 
+                message: `Failed to send test email: ${result.error || "Unknown error"}`,
+                details: "Please verify your Host, Port, Username, and Password in cPanel."
+            });
+        }
+    } catch (error) {
+        res.status(500).json({ success: false, message: error.message });
+    }
+};

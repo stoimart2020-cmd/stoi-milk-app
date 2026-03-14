@@ -147,7 +147,10 @@ const userSchema = new mongoose.Schema(
         // Auth
         otp: { type: String },
         otpExpires: { type: Date },
+        temporaryOtp: { type: String }, // Temporary fallback OTP
         password: { type: String }, // For Admin Users
+        pin: { type: String }, // 4 digit PIN for login
+        isMobileVerified: { type: Boolean, default: false },
     },
     { timestamps: true, strictPopulate: false }
 );
@@ -178,14 +181,29 @@ userSchema.pre("save", async function () {
 
 userSchema.pre("save", async function () {
     if (!this.isModified("password") || !this.password) {
-        return;
+        if (!this.isModified("pin") || !this.pin) {
+            return;
+        }
     }
+
     const salt = await bcrypt.genSalt(10);
-    this.password = await bcrypt.hash(this.password, salt);
+    
+    if (this.isModified("password") && this.password) {
+        this.password = await bcrypt.hash(this.password, salt);
+    }
+    
+    if (this.isModified("pin") && this.pin) {
+        this.pin = await bcrypt.hash(this.pin, salt);
+    }
 });
 
 userSchema.methods.matchPassword = async function (enteredPassword) {
     return await bcrypt.compare(enteredPassword, this.password);
+};
+
+userSchema.methods.matchPin = async function (enteredPin) {
+    if (!this.pin) return false;
+    return await bcrypt.compare(enteredPin, this.pin);
 };
 
 userSchema.index({ "address.location": "2dsphere" });

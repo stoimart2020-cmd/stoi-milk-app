@@ -1,6 +1,6 @@
 import { useParams, Link } from "react-router-dom";
 import { useQuery, useMutation } from "@tanstack/react-query";
-import { getCustomerById, updateCustomer, updateVacation } from "../lib/api/customers";
+import { getCustomerById, updateCustomer, updateVacation, getTempOtp } from "../lib/api/customers";
 import { addPayment } from "../lib/api/payments";
 import { createSubscription, getAdminCustomerSubscriptions, updateAdminDailyModification, updateSubscription, resetTrialEligibility } from "../lib/api/subscriptions";
 import { createOrder } from "../lib/api/orders";
@@ -617,7 +617,8 @@ export const CustomerDetail = () => {
             />
 
             <TempOtpModal
-                customer={customer}
+                target={customer}
+                fetchFn={getTempOtp}
                 isOpen={isTempOtpModalOpen}
                 onClose={() => setIsTempOtpModalOpen(false)}
             />

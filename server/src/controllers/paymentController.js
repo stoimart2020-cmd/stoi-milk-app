@@ -5,6 +5,7 @@ const { logAction } = require("./activityLogController");
 const { getRazorpayInstance } = require("../utils/razorpay");
 const crypto = require("crypto");
 const Setting = require("../models/Setting");
+const { sendCustomerPaymentSuccess } = require("../utils/notification");
 
 exports.addPayment = async (req, res) => {
     try {
@@ -84,6 +85,13 @@ exports.addPayment = async (req, res) => {
                 type: "success",
                 link: "/dashboard/wallet-history"
             });
+
+            // --- AUTOMATIC PAYMENT NOTIFICATION ---
+            try {
+                await sendCustomerPaymentSuccess(user, numAmount, transaction._id);
+            } catch (notifErr) {
+                console.error("Failed to send payment notification", notifErr);
+            }
         }
 
         // Log Activity
@@ -176,6 +184,13 @@ exports.addPaymentPublic = async (req, res) => {
                 type: "success",
                 link: "/dashboard/wallet-history"
             });
+
+            // --- AUTOMATIC PAYMENT NOTIFICATION ---
+            try {
+                await sendCustomerPaymentSuccess(user, numAmount, transaction._id);
+            } catch (notifErr) {
+                console.error("Failed to send payment notification", notifErr);
+            }
         }
 
         // Log Activity

@@ -151,7 +151,7 @@ app.use("/api/bottles", apiLimiter, require("./routes/bottleRoutes"));
 app.use("/api/vacation", apiLimiter, require("./routes/vacationRoutes"));
 app.use("/api/subscriptions", require("./routes/subscriptionRoutes")); // Rate limiter temporarily disabled for debugging
 app.use("/api/referrals", apiLimiter, require("./routes/referralRoutes"));
-app.use("/api/settings", apiLimiter, require("./routes/settings"));
+app.use("/api/settings", apiLimiter, settingsRoutes);
 app.use("/api/delivery/history", apiLimiter, require("./routes/deliveryHistory"));
 app.use("/api/invoices", apiLimiter, require("./routes/invoiceRoutes"));
 app.use("/api/delivery", apiLimiter, require("./routes/deliveryRoutes"));

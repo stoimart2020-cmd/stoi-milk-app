@@ -4,7 +4,7 @@ import {
     User, Phone, MapPin, Edit2, Wallet, Package, Calendar,
     Settings, HelpCircle, LogOut, ChevronRight, Plus, Bell,
     CreditCard, Mail, Clock, Shield, FileText, Gift, X, Check,
-    Home, Building, Navigation, Palmtree
+    Home, Building, Navigation, Palmtree, Lock
 } from "lucide-react";
 import { useAuth } from "../../hook/useAuth";
 import { axiosInstance } from "../../lib/axios";
@@ -37,6 +37,7 @@ export const CustomerProfile = ({ onNavigate }) => {
     const [showAddressModal, setShowAddressModal] = useState(false);
     const [showPreferencesModal, setShowPreferencesModal] = useState(false);
     const [showVacationModal, setShowVacationModal] = useState(false);
+    const [showChangePinModal, setShowChangePinModal] = useState(false);
 
     const { data: transactionsData } = useQuery({
         queryKey: ["myTransactions"],
@@ -89,6 +90,7 @@ export const CustomerProfile = ({ onNavigate }) => {
             items: [
                 { icon: User, label: "Edit Profile", action: () => setShowEditModal(true) },
                 { icon: MapPin, label: "Manage Address", action: () => setShowAddressModal(true) },
+                { icon: Lock, label: "Change Login PIN", action: () => setShowChangePinModal(true) },
                 { icon: Settings, label: "Delivery Preferences", value: user?.deliveryPreference || "Ring Bell", action: () => setShowPreferencesModal(true) },
             ]
         },
@@ -295,7 +297,102 @@ export const CustomerProfile = ({ onNavigate }) => {
                     />
                 )
             }
+            {
+                showChangePinModal && (
+                    <ChangePinModal
+                        onClose={() => setShowChangePinModal(false)}
+                    />
+                )
+            }
         </div >
+    );
+};
+
+// Change Pin Modal
+const ChangePinModal = ({ onClose }) => {
+    const [form, setForm] = useState({
+        oldPin: "",
+        newPin: "",
+        confirmPin: ""
+    });
+    const [loading, setLoading] = useState(false);
+
+    const handleSubmit = async () => {
+        if (form.newPin.length !== 4) return toast.error("PIN must be 4 digits");
+        if (form.newPin !== form.confirmPin) return toast.error("New PINs do not match");
+        
+        setLoading(true);
+        try {
+            const res = await axiosInstance.post("/api/auth/change-pin", form);
+            if (res.data.success) {
+                toast.success("PIN changed successfully!");
+                onClose();
+            }
+        } catch (err) {
+            toast.error(err.response?.data?.message || "Failed to change PIN");
+        } finally {
+            setLoading(false);
+        }
+    };
+
+    return (
+        <div className="modal modal-open">
+            <div className="modal-box max-w-sm">
+                <div className="flex items-center justify-between mb-4">
+                    <h3 className="font-bold text-lg">Change Login PIN</h3>
+                    <button onClick={onClose} className="btn btn-ghost btn-circle btn-sm">
+                        <X size={18} />
+                    </button>
+                </div>
+
+                <div className="space-y-4">
+                    <div className="form-control">
+                        <label className="label"><span className="label-text">Old 4-digit PIN</span></label>
+                        <input
+                            type="password"
+                            maxLength={4}
+                            className="input input-bordered text-center tracking-widest text-xl"
+                            value={form.oldPin}
+                            onChange={(e) => setForm({ ...form, oldPin: e.target.value.replace(/\D/g, "") })}
+                        />
+                    </div>
+
+                    <div className="form-control">
+                        <label className="label"><span className="label-text">New 4-digit PIN</span></label>
+                        <input
+                            type="password"
+                            maxLength={4}
+                            className="input input-bordered text-center tracking-widest text-xl"
+                            value={form.newPin}
+                            onChange={(e) => setForm({ ...form, newPin: e.target.value.replace(/\D/g, "") })}
+                        />
+                    </div>
+
+                    <div className="form-control">
+                        <label className="label"><span className="label-text">Confirm New PIN</span></label>
+                        <input
+                            type="password"
+                            maxLength={4}
+                            className="input input-bordered text-center tracking-widest text-xl"
+                            value={form.confirmPin}
+                            onChange={(e) => setForm({ ...form, confirmPin: e.target.value.replace(/\D/g, "") })}
+                        />
+                    </div>
+                </div>
+
+                <div className="modal-action">
+                    <button className="btn btn-ghost" onClick={onClose}>Cancel</button>
+                    <button
+                        className="btn btn-primary text-white"
+                        onClick={handleSubmit}
+                        disabled={loading}
+                    >
+                        {loading ? <span className="loading loading-spinner loading-sm"></span> : "Update PIN"}
+                    </button>
+                </div>
+            </div>
+            <div className="modal-backdrop" onClick={onClose}></div>
+        </div>
     );
 };
 

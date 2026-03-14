@@ -8,6 +8,7 @@ const Order = require('../models/Order');
 const Employee = require('../models/Employee');
 const Product = require('../models/Product');
 const { createNotification } = require('../controllers/notificationController');
+const { sendInvoiceNotification } = require('../utils/notification');
 
 // Store active cron jobs
 let activePaymentJob = null;
@@ -232,6 +233,15 @@ const processSubscriptionPayments = async (targetDateOverride = null) => {
                         ordersCreated++;
                     }
                     console.log(`[CRON] Sub ${sub._id}: Order #${order.orderId || order._id} created for ${tomorrowDateStr}`);
+                    
+                    // Send Invoice Notification
+                    try {
+                        // Populate product info for the notification if needed, 
+                        // but Order already has products with ids. Notification helper populates it.
+                        await sendInvoiceNotification(sub.user, order);
+                    } catch (notifErr) {
+                        console.error(`[CRON] Failed to notify customer for sub ${sub._id}:`, notifErr);
+                    }
                 }
 
             } catch (err) {

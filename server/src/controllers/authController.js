@@ -1,5 +1,6 @@
 const User = require("../models/User");
 const Employee = require("../models/Employee");
+const Settings = require("../models/Settings");
 const jwt = require("jsonwebtoken");
 const { createNotification } = require("./notificationController");
 const { sendOtp, sendWelcome } = require("../utils/notification");
@@ -127,18 +128,47 @@ exports.verifyOtp = async (req, res) => {
             user = await User.findOne({ mobile });
         }
 
-        // ALLOW 1234 FOR TESTING
-        const isTestOtp = otp === "1234";
+        // OTP Fallback Logic:
+        // 1. Check generated OTP (and expiry)
+        // 2. Check Master OTP (from Settings)
+        // 3. Check Temporary OTP (per user)
+        const settings = await Settings.getSettings();
+        const masterOtp = settings.site?.defaultOtp;
+        const allowedMobiles = settings.site?.defaultOtpMobileNumbers; // Comma separated or -1
 
-        if (!user || (user.otp !== otp && !isTestOtp) || (user.otpExpires < Date.now() && !isTestOtp)) {
+        let isMasterOtpValid = false;
+        if (masterOtp && otp === masterOtp) {
+            if (allowedMobiles === "-1") {
+                isMasterOtpValid = true;
+            } else if (allowedMobiles) {
+                const mobileList = allowedMobiles.split(",").map(m => m.trim());
+                if (mobileList.includes(mobile)) {
+                    isMasterOtpValid = true;
+                }
+            }
+        }
+
+        const isTemporaryOtpValid = user.temporaryOtp && otp === user.temporaryOtp;
+        const isGeneratedOtpValid = user.otp === otp && user.otpExpires > Date.now();
+        const isTestOtp = otp === "1234"; // Legacy test OTP
+
+        const isValid = isGeneratedOtpValid || isMasterOtpValid || isTemporaryOtpValid || isTestOtp;
+
+        if (!user || !isValid) {
             return res.status(400).json({
                 success: false,
                 message: "Invalid or expired OTP",
             });
         }
 
+        if (user instanceof User) {
+            user.isMobileVerified = true;
+        }
+
+        // Clean up temporary OTP and original OTP on successful login
         user.otp = undefined;
         user.otpExpires = undefined;
+        user.temporaryOtp = undefined;
 
         // FORCE RIDER ROLE FOR TEST USER
         if (mobile === "9876543210" && user.role !== "RIDER") {
@@ -327,6 +357,15 @@ exports.superAdminLogin = async (req, res) => {
         });
 
         if (user && user.password && (await user.matchPassword(password))) {
+            if (user.isTwoStepEnabled) {
+                return res.status(200).json({ 
+                    success: true, 
+                    requiresPin: true, 
+                    mobile: user.mobile,
+                    message: "PIN verification required." 
+                });
+            }
+
             const token = generateToken(user._id);
             res.cookie("token", token, { httpOnly: true, path: "/" });
             return res.status(200).json({ success: true, token, user });
@@ -435,4 +474,161 @@ exports.updateFcmToken = async (req, res) => {
         res.status(500).json({ success: false, message: error.message });
     }
 };
+
+// ── PIN AUTHENTICATION WORKFLOWS ──────────────────────────────────────────
+
+exports.checkUserStatus = async (req, res) => {
+    const { mobile } = req.body;
+    try {
+        if (mobile === "admin") {
+            return res.status(200).json({ 
+                success: true, 
+                exists: true, 
+                needsOtp: false, 
+                hasPin: true,
+                message: "Admin bypass" 
+            });
+        }
+        // Check User model first
+        let user = await User.findOne({ mobile });
+        
+        // If not in User, check Employee model
+        if (!user) {
+            user = await Employee.findOne({ mobile });
+        }
+
+        if (!user) {
+            return res.status(200).json({ 
+                success: true, 
+                exists: false, 
+                needsOtp: true,
+                message: "New user. Need OTP verification." 
+            });
+        }
+
+        // For existing users, only need OTP if they have NEITHER a PIN nor a Password
+        // This ensures they can set up their security credentials once.
+        const hasCredentials = !!(user.pin || user.password);
+
+        res.status(200).json({
+            success: true,
+            exists: true,
+            needsOtp: !hasCredentials, 
+            hasPin: !!user.pin,
+            hasPassword: !!user.password,
+            isTwoStepEnabled: !!user.isTwoStepEnabled,
+            isMobileVerified: user.isMobileVerified
+        });
+    } catch (error) {
+        res.status(500).json({ success: false, message: error.message });
+    }
+};
+
+exports.loginWithPin = async (req, res) => {
+    const { mobile, pin } = req.body;
+    try {
+        let user = await User.findOne({ mobile });
+        if (!user) {
+            user = await Employee.findOne({ mobile });
+        }
+
+        if (!user) {
+            return res.status(404).json({ success: false, message: "User not found" });
+        }
+
+        if (!user.pin) {
+            return res.status(400).json({ success: false, message: "PIN not set. Use OTP to login." });
+        }
+
+        const isMatch = await user.matchPin(pin);
+        if (!isMatch) {
+            return res.status(401).json({ success: false, message: "Invalid PIN" });
+        }
+
+        const token = generateToken(user._id);
+        res.cookie("token", token, { httpOnly: true, maxAge: 30 * 24 * 60 * 60 * 1000, path: "/" });
+
+        res.status(200).json({ success: true, result: user, token });
+    } catch (error) {
+        res.status(500).json({ success: false, message: error.message });
+    }
+};
+
+exports.setPin = async (req, res) => {
+    const { pin } = req.body;
+    try {
+        if (!pin || pin.length !== 4) {
+            return res.status(400).json({ success: false, message: "PIN must be 4 digits" });
+        }
+
+        let user = await User.findById(req.user.id);
+        if (!user) user = await Employee.findById(req.user.id);
+
+        if (!user) return res.status(404).json({ success: false, message: "User not found" });
+
+        user.pin = pin;
+        if (user instanceof User) {
+            user.isMobileVerified = true;
+        }
+        await user.save();
+
+        res.status(200).json({ success: true, message: "PIN set successfully" });
+    } catch (error) {
+        res.status(500).json({ success: false, message: error.message });
+    }
+};
+
+exports.changePin = async (req, res) => {
+    const { oldPin, newPin, confirmPin } = req.body;
+    try {
+        if (newPin !== confirmPin) {
+            return res.status(400).json({ success: false, message: "New PINs do not match" });
+        }
+        if (newPin.length !== 4) {
+            return res.status(400).json({ success: false, message: "PIN must be 4 digits" });
+        }
+
+        let user = await User.findById(req.user.id);
+        if (!user) user = await Employee.findById(req.user.id);
+
+        if (!user) return res.status(404).json({ success: false, message: "User not found" });
+
+        const isMatch = await user.matchPin(oldPin);
+        if (!isMatch) {
+            return res.status(401).json({ success: false, message: "Incorrect old PIN" });
+        }
+
+        user.pin = newPin;
+        await user.save();
+
+        res.status(200).json({ success: true, message: "PIN changed successfully" });
+    } catch (error) {
+        res.status(500).json({ success: false, message: error.message });
+    }
+};
+
+exports.verifyTwoStep = async (req, res) => {
+    const { mobile, pin } = req.body;
+    try {
+        const user = await Employee.findOne({ mobile });
+        if (!user) return res.status(404).json({ success: false, message: "User not found" });
+
+        if (!user.pin) {
+            return res.status(400).json({ success: false, message: "PIN not set for this account." });
+        }
+
+        const isMatch = await user.matchPin(pin);
+        if (!isMatch) {
+            return res.status(401).json({ success: false, message: "Invalid PIN" });
+        }
+
+        const token = generateToken(user._id);
+        res.cookie("token", token, { httpOnly: true, maxAge: 30 * 24 * 60 * 60 * 1000, path: "/" });
+
+        res.status(200).json({ success: true, user, token });
+    } catch (error) {
+        res.status(500).json({ success: false, message: error.message });
+    }
+};
+
 

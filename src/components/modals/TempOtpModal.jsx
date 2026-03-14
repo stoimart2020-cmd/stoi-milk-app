@@ -1,15 +1,14 @@
 import { useState, useEffect } from "react";
-import { getTempOtp } from "../../lib/api/customers";
 import { toast } from "react-hot-toast";
 
-export const TempOtpModal = ({ customer, isOpen, onClose }) => {
+export const TempOtpModal = ({ target, fetchFn, isOpen, onClose }) => {
     const [otp, setOtp] = useState("");
     const [loading, setLoading] = useState(false);
 
     const fetchOtp = async () => {
         try {
             setLoading(true);
-            const res = await getTempOtp(customer._id);
+            const res = await fetchFn(target._id);
             setOtp(res.result);
             toast.success("OTP retrieved successfully");
         } catch (error) {
@@ -20,12 +19,12 @@ export const TempOtpModal = ({ customer, isOpen, onClose }) => {
     };
 
     useEffect(() => {
-        if (isOpen && customer?._id) {
+        if (isOpen && target?._id) {
             fetchOtp();
         } else {
             setOtp("");
         }
-    }, [isOpen, customer]);
+    }, [isOpen, target]);
 
     if (!isOpen) return null;
 
@@ -39,7 +38,7 @@ export const TempOtpModal = ({ customer, isOpen, onClose }) => {
 
                 <div className="p-8 text-center space-y-4">
                     <p className="text-sm text-gray-600">
-                        Ask the customer to use the following code to login/signup.
+                        Ask the {target?.role?.toLowerCase() || 'user'} to use the following code to login/signup.
                         This code bypasses SMS delivery.
                     </p>
 

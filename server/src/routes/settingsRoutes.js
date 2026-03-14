@@ -6,6 +6,8 @@ const {
     updateSettings,
     testSmsGateway,
     testPaymentGateway,
+    testEmail,
+    sendEmail,
 } = require("../controllers/settingsController");
 const { protect } = require("../middleware/auth");
 
@@ -17,5 +19,7 @@ router.get("/", protect, getSettings);
 router.put("/", protect, updateSettings);
 router.post("/test-sms", protect, testSmsGateway);
 router.post("/test-payment", protect, testPaymentGateway);
+router.post("/test-email", protect, testEmail);
+router.post("/send-email", protect, sendEmail);
 
 module.exports = router;

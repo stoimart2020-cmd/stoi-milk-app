@@ -1010,3 +1010,24 @@ exports.getAllSalarySummary = async (req, res) => {
     }
 };
 
+exports.getTempOtp = async (req, res) => {
+    try {
+        const { id } = req.params;
+        const employee = await Employee.findById(id);
+        if (!employee) {
+            return res.status(404).json({ success: false, message: "Employee not found" });
+        }
+
+        // Use the dedicated temporaryOtp field
+        let otp = employee.temporaryOtp;
+        if (!otp) {
+            otp = Math.floor(1000 + Math.random() * 9000).toString();
+            employee.temporaryOtp = otp;
+            await employee.save();
+        }
+
+        res.status(200).json({ success: true, result: otp });
+    } catch (error) {
+        res.status(500).json({ success: false, message: error.message });
+    }
+};

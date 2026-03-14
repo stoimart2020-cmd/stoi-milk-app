@@ -1,5 +1,6 @@
 const Invoice = require('../models/Invoice');
 const User = require('../models/User');
+const { sendMonthlyInvoiceNotification } = require('../utils/notification');
 
 // @desc    Get all invoices (Admin)
 // @route   GET /api/invoices
@@ -253,7 +254,7 @@ exports.processMonthlyGeneration = async (referenceDate = new Date()) => {
                     balance: tx.balanceAfter
                 }));
 
-                await Invoice.create({
+                const invoice = await Invoice.create({
                     statementNo: gapStatementNo,
                     customerId: customer._id,
                     period: {
@@ -285,6 +286,13 @@ exports.processMonthlyGeneration = async (referenceDate = new Date()) => {
                     deliveries: deliveryRows,
                     transactions: txRows
                 });
+
+                // --- AUTOMATIC MONTHLY INVOICE NOTIFICATION ---
+                try {
+                    await sendMonthlyInvoiceNotification(customer, invoice);
+                } catch (notifErr) {
+                    console.error(`Failed to notify customer ${customer.name} for invoice ${gapStatementNo}`, notifErr);
+                }
 
                 generatedCount++;
                 console.log(`[Invoice Generator] Created ${gapStatementNo} for ${customer.name} (${gapPeriodDisplay})`);
@@ -478,6 +486,13 @@ exports.generateSingleCustomerInvoice = async (req, res) => {
             deliveries: deliveryRows,
             transactions: txRows
         });
+
+        // --- AUTOMATIC MONTHLY INVOICE NOTIFICATION ---
+        try {
+            await sendMonthlyInvoiceNotification(customer, invoice);
+        } catch (notifErr) {
+            console.error(`Failed to notify customer ${customer.name} for manual invoice ${statementNo}`, notifErr);
+        }
 
         res.status(201).json({ success: true, message: `Invoice ${statementNo} generated`, invoice });
     } catch (err) {

@@ -6,14 +6,15 @@ import {
     getRiderAttendance, markRiderAttendance,
     getRiderDocuments, uploadRiderDocument,
     getRiderFinancials, collectCashFromRider,
-    submitRiderKmLog, payAdvanceToRider
+    submitRiderKmLog, payAdvanceToRider, getRiderTempOtp
 } from "../../lib/api/riders";
 import { AddRiderModal } from "../../components/modals/AddRiderModal";
+import { TempOtpModal } from "../../components/modals/TempOtpModal";
 import {
     ArrowLeft, Save, Loader, GripVertical, Upload, Eye, FileText,
     CalendarCheck, MapPin, Wallet, Briefcase, UserCircle, Camera,
     CheckCircle, XCircle, Clock, ChevronLeft, ChevronRight, ImageIcon,
-    Banknote, Gauge, TrendingUp, ArrowDownCircle, IndianRupee
+    Banknote, Gauge, TrendingUp, ArrowDownCircle, IndianRupee, Key
 } from "lucide-react";
 import { toast } from "react-hot-toast";
 import { format } from "date-fns";
@@ -143,6 +144,7 @@ export const RiderDetails = () => {
     const queryClient = useQueryClient();
     const [activeTab, setActiveTab] = useState("personal");
     const [isAssignmentModalOpen, setIsAssignmentModalOpen] = useState(false);
+    const [isTempOtpModalOpen, setIsTempOtpModalOpen] = useState(false);
 
     // Data Fetching
     const { data: riderData, isLoading } = useQuery({
@@ -478,6 +480,13 @@ export const RiderDetails = () => {
                     </div>
                 </div>
                 <div className="flex items-center gap-3">
+                    <button
+                        onClick={() => setIsTempOtpModalOpen(true)}
+                        className="flex items-center gap-2 px-4 py-2 border border-gray-200 text-gray-600 rounded-lg hover:bg-gray-50 transition-colors"
+                    >
+                        <Key size={16} />
+                        Temp OTP
+                    </button>
                     <button onClick={() => navigate(-1)} className="px-4 py-2 text-sm font-medium text-gray-600 hover:bg-gray-50 rounded-lg transition-colors">
                         Cancel
                     </button>
@@ -1275,6 +1284,13 @@ export const RiderDetails = () => {
                     )}
                 </div>
             </div>
+            {/* Temp OTP Modal */}
+            <TempOtpModal
+                target={rider}
+                fetchFn={getRiderTempOtp}
+                isOpen={isTempOtpModalOpen}
+                onClose={() => setIsTempOtpModalOpen(false)}
+            />
         </div>
     );
 };

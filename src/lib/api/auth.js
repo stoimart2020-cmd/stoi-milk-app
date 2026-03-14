@@ -45,3 +45,28 @@ export const updateFcmToken = async (fcmToken) => {
     const res = await axiosInstance.post("/api/auth/update-fcm-token", { fcmToken });
     return res;
 };
+
+export const checkUserStatus = async (mobile) => {
+    const res = await axiosInstance.post("/api/auth/check-status", { mobile });
+    return res.data;
+};
+
+export const loginWithPin = async ({ mobile, pin }) => {
+    const res = await axiosInstance.post("/api/auth/login-pin", { mobile, pin });
+    return res;
+};
+
+export const setPin = async (pin) => {
+    const res = await axiosInstance.post("/api/auth/set-pin", { pin });
+    return res;
+};
+
+export const changePin = async (data) => {
+    const res = await axiosInstance.post("/api/auth/change-pin", data);
+    return res;
+};
+
+export const verifyTwoStep = async (data) => {
+    const res = await axiosInstance.post("/api/auth/verify-2fa", data);
+    return res;
+};
