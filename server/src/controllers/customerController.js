@@ -217,6 +217,21 @@ exports.updateCustomer = async (req, res) => {
     try {
         const { id } = req.params;
         const updateData = { ...req.body };
+        const mongoose = require("mongoose");
+
+        // Fetch existing customer to check permissions
+        const existingCustomer = mongoose.isValidObjectId(id) ? await User.findById(id) : await User.findOne({ customerId: id });
+        
+        if (!existingCustomer) {
+            return res.status(404).json({ success: false, message: "Customer not found" });
+        }
+
+        // Field Marketing (Field Sales) can only edit their own leads
+        if (req.user && req.user.role === 'FIELD_MARKETING') {
+            if (existingCustomer.createdBy?.toString() !== req.user._id.toString()) {
+                return res.status(403).json({ success: false, message: "You are not authorized to edit this customer. Only the person who created this lead can edit it." });
+            }
+        }
 
         // Build address object if address fields are provided
         if (updateData.houseNo !== undefined || updateData.floor !== undefined || updateData.area !== undefined || updateData.landmark !== undefined) {
@@ -311,8 +326,7 @@ exports.updateCustomer = async (req, res) => {
         }
 
         if (updateData.role === "CUSTOMER") {
-            const existingUser = mongoose.isValidObjectId(id) ? await User.findById(id) : await User.findOne({ customerId: id });
-            if (existingUser && !existingUser.customerId) {
+            if (existingCustomer && !existingCustomer.customerId) {
                 const Counter = require("../models/Counter");
                 updateQuery.$set.customerId = await Counter.getNextSequence("customerId");
             }

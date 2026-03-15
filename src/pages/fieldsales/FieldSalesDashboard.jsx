@@ -632,28 +632,31 @@ export const FieldSalesDashboard = () => {
                 <div className="space-y-3">
                     <h3 className="text-sm font-bold text-gray-500 uppercase tracking-wider">Actions</h3>
 
-                    <button
-                        onClick={() => {
-                            setLeadForm({
-                                name: selectedLead.name || "",
-                                mobile: selectedLead.mobile || "",
-                                email: selectedLead.email || "",
-                                address: selectedLead.address?.fullAddress || "",
-                            });
-                            setLeadLocation(selectedLead.address?.location?.coordinates || null);
-                            setSubView("edit_lead");
-                        }}
-                        className="w-full bg-white rounded-2xl p-4 shadow-sm border border-gray-100 flex items-center gap-4 hover:border-teal-300 hover:shadow-md transition-all active:scale-[0.98]"
-                    >
-                        <div className="w-12 h-12 bg-teal-50 rounded-xl flex items-center justify-center text-teal-600">
-                            <Plus className="w-6 h-6" />
-                        </div>
-                        <div className="text-left">
-                            <p className="font-semibold text-gray-800">Edit Lead Info</p>
-                            <p className="text-xs text-gray-400">Update name, mobile, address or location</p>
-                        </div>
-                        <ChevronRight className="w-5 h-5 text-gray-300 ml-auto" />
-                    </button>
+                    {/* Only show Edit option if the user created this lead/customer */}
+                    {(selectedLead.createdBy === user?._id || !selectedLead.createdBy) && (
+                        <button
+                            onClick={() => {
+                                setLeadForm({
+                                    name: selectedLead.name || "",
+                                    mobile: selectedLead.mobile || "",
+                                    email: selectedLead.email || "",
+                                    address: selectedLead.address?.fullAddress || "",
+                                });
+                                setLeadLocation(selectedLead.address?.location?.coordinates || null);
+                                setSubView("edit_lead");
+                            }}
+                            className="w-full bg-white rounded-2xl p-4 shadow-sm border border-gray-100 flex items-center gap-4 hover:border-teal-300 hover:shadow-md transition-all active:scale-[0.98]"
+                        >
+                            <div className="w-12 h-12 bg-teal-50 rounded-xl flex items-center justify-center text-teal-600">
+                                <Plus className="w-6 h-6" />
+                            </div>
+                            <div className="text-left">
+                                <p className="font-semibold text-gray-800">Edit Lead Info</p>
+                                <p className="text-xs text-gray-400">Update name, mobile, address or location</p>
+                            </div>
+                            <ChevronRight className="w-5 h-5 text-gray-300 ml-auto" />
+                        </button>
+                    )}
 
                     <button
                         onClick={() => setSubView("convert")}
