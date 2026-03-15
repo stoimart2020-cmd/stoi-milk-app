@@ -58,8 +58,11 @@ router.post('/update-location', protect, async (req, res) => {
  */
 router.get('/all-riders', protect, adminOnly, async (req, res) => {
     try {
-        // Get all riders from DB
-        const riders = await Employee.find({ role: 'RIDER', isActive: true })
+        // Get all trackable employees (Riders and Field Sales) from DB
+        const riders = await Employee.find({ 
+            role: { $in: ['RIDER', 'FIELD_MARKETING'] }, 
+            isActive: true 
+        })
             .select('name mobile hub areas liveLocation isActive documents.photo')
             .populate('hub', 'name')
             .populate('areas', 'name')
