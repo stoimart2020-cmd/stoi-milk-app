@@ -451,6 +451,7 @@ export const FieldSalesDashboard = () => {
                         value={leadForm.name}
                         onChange={(e) => setLeadForm({ ...leadForm, name: e.target.value })}
                         required
+                        disabled={subView === 'edit_lead' && selectedLead?.createdBy && selectedLead.createdBy !== user?._id}
                     />
                 </div>
 
@@ -468,6 +469,7 @@ export const FieldSalesDashboard = () => {
                             onChange={(e) => setLeadForm({ ...leadForm, mobile: e.target.value })}
                             maxLength={10}
                             required
+                            disabled={subView === 'edit_lead' && selectedLead?.createdBy && selectedLead.createdBy !== user?._id}
                         />
                         <button
                             type="button"
@@ -505,6 +507,7 @@ export const FieldSalesDashboard = () => {
                         placeholder="email@example.com"
                         value={leadForm.email}
                         onChange={(e) => setLeadForm({ ...leadForm, email: e.target.value })}
+                        disabled={subView === 'edit_lead' && selectedLead?.createdBy && selectedLead.createdBy !== user?._id}
                     />
                 </div>
 
@@ -519,6 +522,7 @@ export const FieldSalesDashboard = () => {
                         rows={2}
                         value={leadForm.address}
                         onChange={(e) => setLeadForm({ ...leadForm, address: e.target.value })}
+                        disabled={subView === 'edit_lead' && selectedLead?.createdBy && selectedLead.createdBy !== user?._id}
                     />
                 </div>
 
@@ -532,7 +536,7 @@ export const FieldSalesDashboard = () => {
                             type="button"
                             onClick={handleDetectLocation}
                             className="btn btn-xs btn-outline btn-teal gap-1"
-                            disabled={detectingLocation}
+                            disabled={detectingLocation || (subView === 'edit_lead' && selectedLead?.createdBy && selectedLead.createdBy !== user?._id)}
                         >
                             {detectingLocation ? <Loader2 className="w-3 h-3 animate-spin" /> : <Navigation className="w-3 h-3" />}
                             {detectingLocation ? "Detecting..." : "Auto Detect"}
@@ -566,11 +570,11 @@ export const FieldSalesDashboard = () => {
                     <p className="text-xs text-gray-400 mt-2">Tap on the map to pin location or use Auto Detect</p>
                 </div>
 
-                <button
-                    type="submit"
-                    className="btn w-full bg-gradient-to-r from-teal-500 to-emerald-500 text-white border-0 text-base shadow-lg"
-                    disabled={createLeadMutation.isPending || updateLeadMutation.isPending}
-                >
+                    <button
+                        type="submit"
+                        className="btn w-full bg-gradient-to-r from-teal-500 to-emerald-500 text-white border-0 text-base shadow-lg"
+                        disabled={createLeadMutation.isPending || updateLeadMutation.isPending || (subView === 'edit_lead' && selectedLead?.createdBy && selectedLead.createdBy !== user?._id)}
+                    >
                     {createLeadMutation.isPending || updateLeadMutation.isPending ? (
                         <><Loader2 className="w-5 h-5 animate-spin" /> {subView === "edit_lead" ? "Updating..." : "Creating..."}</>
                     ) : (
@@ -632,31 +636,51 @@ export const FieldSalesDashboard = () => {
                 <div className="space-y-3">
                     <h3 className="text-sm font-bold text-gray-500 uppercase tracking-wider">Actions</h3>
 
-                    {/* Only show Edit option if the user created this lead/customer */}
-                    {(selectedLead.createdBy === user?._id || !selectedLead.createdBy) && (
-                        <button
-                            onClick={() => {
-                                setLeadForm({
-                                    name: selectedLead.name || "",
-                                    mobile: selectedLead.mobile || "",
-                                    email: selectedLead.email || "",
-                                    address: selectedLead.address?.fullAddress || "",
-                                });
-                                setLeadLocation(selectedLead.address?.location?.coordinates || null);
-                                setSubView("edit_lead");
-                            }}
-                            className="w-full bg-white rounded-2xl p-4 shadow-sm border border-gray-100 flex items-center gap-4 hover:border-teal-300 hover:shadow-md transition-all active:scale-[0.98]"
-                        >
-                            <div className="w-12 h-12 bg-teal-50 rounded-xl flex items-center justify-center text-teal-600">
-                                <Plus className="w-6 h-6" />
-                            </div>
-                            <div className="text-left">
-                                <p className="font-semibold text-gray-800">Edit Lead Info</p>
-                                <p className="text-xs text-gray-400">Update name, mobile, address or location</p>
-                            </div>
-                            <ChevronRight className="w-5 h-5 text-gray-300 ml-auto" />
-                        </button>
-                    )}
+                    {/* Edit option - Greyed out if not owner, but still accessible */}
+                    <button
+                        onClick={() => {
+                            setLeadForm({
+                                name: selectedLead.name || "",
+                                mobile: selectedLead.mobile || "",
+                                email: selectedLead.email || "",
+                                address: selectedLead.address?.fullAddress || "",
+                            });
+                            setLeadLocation(selectedLead.address?.location?.coordinates || null);
+                            setSubView("edit_lead");
+                            if (selectedLead.createdBy && selectedLead.createdBy !== user?._id) {
+                                toast("Viewing read-only details", { icon: '👁️' });
+                            }
+                        }}
+                        className={`w-full rounded-2xl p-4 shadow-sm border flex items-center gap-4 transition-all ${
+                            (selectedLead.createdBy === user?._id || !selectedLead.createdBy)
+                            ? "bg-white border-gray-100 hover:border-teal-300 hover:shadow-md active:scale-[0.98]"
+                            : "bg-gray-100 border-gray-200 opacity-70 cursor-pointer"
+                        }`}
+                    >
+                        <div className={`w-12 h-12 rounded-xl flex items-center justify-center ${
+                            (selectedLead.createdBy === user?._id || !selectedLead.createdBy)
+                            ? "bg-teal-50 text-teal-600"
+                            : "bg-gray-200 text-gray-500"
+                        }`}>
+                            <Plus className="w-6 h-6" />
+                        </div>
+                        <div className="text-left">
+                            <p className={`font-semibold ${
+                                (selectedLead.createdBy === user?._id || !selectedLead.createdBy)
+                                ? "text-gray-800"
+                                : "text-gray-500"
+                            }`}>
+                                Edit Lead Info {(selectedLead.createdBy && selectedLead.createdBy !== user?._id) && "(Read-only)"}
+                            </p>
+                            <p className="text-xs text-gray-400">
+                                {(selectedLead.createdBy === user?._id || !selectedLead.createdBy) 
+                                    ? "Update name, mobile, address or location"
+                                    : "You can only view details of this customer"
+                                }
+                            </p>
+                        </div>
+                        <ChevronRight className="w-5 h-5 text-gray-300 ml-auto" />
+                    </button>
 
                     <button
                         onClick={() => setSubView("convert")}
