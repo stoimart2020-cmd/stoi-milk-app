@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef, useMemo, useCallback } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { getAllRidersTracking } from "../lib/api/tracking";
+import { getAllRidersTracking, getRiderLocationHistory } from "../lib/api/tracking";
 import {
     MapPin,
     Bike,
@@ -27,9 +27,10 @@ import "leaflet/dist/leaflet.css";
 import { formatDistanceToNow } from "date-fns";
 
 // ─── Custom Marker Icons ────────────────────────────────────
-const createRiderIcon = (isOnline, heading = 0) => {
-    const color = isOnline ? "#10b981" : "#6b7280";
-    const glowColor = isOnline ? "rgba(16,185,129,0.4)" : "transparent";
+const createRiderIcon = (isOnline, heading = 0, role = 'RIDER') => {
+    const isFieldSales = role === 'FIELD_MARKETING';
+    const color = isOnline ? (isFieldSales ? "#3b82f6" : "#10b981") : "#6b7280";
+    const glowColor = isOnline ? (isFieldSales ? "rgba(59,130,246,0.4)" : "rgba(16,185,129,0.4)") : "transparent";
 
     return L.divIcon({
         className: "rider-marker-icon",
@@ -38,7 +39,7 @@ const createRiderIcon = (isOnline, heading = 0) => {
                 <div style="position:absolute;inset:0;border-radius:50%;background:${glowColor};animation:${isOnline ? 'pulse 2s infinite' : 'none'};"></div>
                 <div style="
                     width:36px;height:36px;border-radius:50%;
-                    background:linear-gradient(135deg,${isOnline ? '#059669,#10b981' : '#4b5563,#6b7280'});
+                    background:linear-gradient(135deg,${isOnline ? (isFieldSales ? '#2563eb,#3b82f6' : '#059669,#10b981') : '#4b5563,#6b7280'});
                     border:3px solid white;
                     box-shadow:0 2px 8px rgba(0,0,0,0.3);
                     display:flex;align-items:center;justify-content:center;
@@ -46,10 +47,10 @@ const createRiderIcon = (isOnline, heading = 0) => {
                     transition:transform 0.3s ease;
                 ">
                     <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
-                        <circle cx="18.5" cy="17.5" r="3.5"></circle>
-                        <circle cx="5.5" cy="17.5" r="3.5"></circle>
-                        <circle cx="15" cy="5" r="1"></circle>
-                        <path d="m12 17.5V14l-3-3 4-3 2 3h2"></path>
+                        ${isFieldSales ? 
+                            '<path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"></path><circle cx="9" cy="7" r="4"></circle><path d="M22 21v-2a4 4 0 0 0-3-3.87"></path><path d="M16 3.13a4 4 0 0 1 0 7.75"></path>' :
+                            '<circle cx="18.5" cy="17.5" r="3.5"></circle><circle cx="5.5" cy="17.5" r="3.5"></circle><circle cx="15" cy="5" r="1"></circle><path d="m12 17.5V14l-3-3 4-3 2 3h2"></path>'
+                        }
                     </svg>
                 </div>
             </div>
@@ -92,6 +93,9 @@ export const LiveTracking = () => {
     const [isFullscreen, setIsFullscreen] = useState(false);
     const [showSidebar, setShowSidebar] = useState(true);
     const [filterStatus, setFilterStatus] = useState("all"); // all | online | offline
+    const [riderHistory, setRiderHistory] = useState([]);
+    const [isLoadingHistory, setIsLoadingHistory] = useState(false);
+    const [showHistory, setShowHistory] = useState(true);
     const mapRef = useRef(null);
 
     // ─── Fetch Data ─────────────────────────────────────
@@ -137,11 +141,25 @@ export const LiveTracking = () => {
     }, [ridersOnMap]);
 
     // ─── Focus on a specific rider ──────────────────────
-    const focusOnRider = useCallback((rider) => {
+    const focusOnRider = useCallback(async (rider) => {
         setSelectedRider(rider);
         if (rider.location) {
             setFlyTo([rider.location.lat, rider.location.lng]);
             setFlyZoom(16);
+        }
+
+        // Fetch history
+        setIsLoadingHistory(true);
+        try {
+            const historyData = await getRiderLocationHistory(rider._id, 100);
+            if (historyData.success) {
+                setRiderHistory(historyData.history || []);
+            }
+        } catch (err) {
+            console.error("Failed to fetch history:", err);
+            setRiderHistory([]);
+        } finally {
+            setIsLoadingHistory(false);
         }
     }, []);
 
@@ -619,6 +637,15 @@ export const LiveTracking = () => {
                             <span>Offline</span>
                             <span className="count">{stats.offline}</span>
                         </div>
+
+                        <div
+                            className={`lt-stat-pill ${showHistory ? "active" : ""}`}
+                            onClick={() => setShowHistory(!showHistory)}
+                            style={{ color: showHistory ? "#3b82f6" : "#64748b" }}
+                        >
+                            <Clock size={14} />
+                            <span>Trails</span>
+                        </div>
                     </div>
                 </div>
 
@@ -777,11 +804,25 @@ export const LiveTracking = () => {
 
                         {flyTo && <FlyToLocation center={flyTo} zoom={flyZoom} />}
 
+                        {/* Movement History Trails */}
+                        {showHistory && riderHistory.length > 1 && (
+                            <Polyline
+                                positions={riderHistory.map(loc => [loc.lat, loc.lng])}
+                                pathOptions={{
+                                    color: selectedRider?.role === 'FIELD_MARKETING' ? '#3b82f6' : '#10b981',
+                                    weight: 4,
+                                    opacity: 0.6,
+                                    dashArray: '10, 10',
+                                    lineJoin: 'round'
+                                }}
+                            />
+                        )}
+
                         {ridersOnMap.map((rider) => (
                             <Marker
                                 key={rider._id}
                                 position={[rider.location.lat, rider.location.lng]}
-                                icon={createRiderIcon(rider.isOnline, rider.location.heading)}
+                                icon={createRiderIcon(rider.isOnline, rider.location.heading, rider.role)}
                                 eventHandlers={{
                                     click: () => setSelectedRider(rider),
                                 }}
