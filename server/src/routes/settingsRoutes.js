@@ -14,8 +14,8 @@ const { protect } = require("../middleware/auth");
 // Public route - for customer/rider apps
 router.get("/public", getPublicSettings);
 
-// Protected routes - admin only
-router.get("/", protect, getSettings);
+// Public settings (needed globally by frontend)
+router.get("/", getSettings);
 router.put("/", protect, updateSettings);
 router.post("/test-sms", protect, testSmsGateway);
 router.post("/test-payment", protect, testPaymentGateway);

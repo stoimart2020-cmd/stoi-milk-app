@@ -83,11 +83,11 @@ class ErrorMonitor {
      * Write to log file
      */
     writeToFile(filePath, data) {
-        try {
-            fs.appendFileSync(filePath, data);
-        } catch (err) {
-            console.error('Failed to write to log file:', err);
-        }
+        fs.appendFile(filePath, data, (err) => {
+            if (err) {
+                console.error('Failed to write to log file:', err);
+            }
+        });
     }
 
     /**
