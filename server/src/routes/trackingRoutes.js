@@ -162,16 +162,40 @@ router.get('/rider/:riderId', protect, adminOnly, async (req, res) => {
     }
 });
 
-/**
- * @route   GET /api/tracking/rider/:riderId/history
- * @desc    Get rider location history
- * @access  Private (Admin)
- */
 router.get('/rider/:riderId/history', protect, adminOnly, async (req, res) => {
     try {
-        const limit = parseInt(req.query.limit) || 50;
-        const result = gpsTracker.getRiderHistory(req.params.riderId, limit);
-        res.json(result);
+        const { riderId } = req.params;
+        const limit = parseInt(req.query.limit) || 100;
+        const { date } = req.query; // Optional date filter
+
+        let query = { employee: riderId };
+
+        if (date) {
+            const start = new Date(date);
+            start.setHours(0, 0, 0, 0);
+            const end = new Date(date);
+            end.setHours(23, 59, 59, 999);
+            query.timestamp = { $gte: start, $lte: end };
+        }
+
+        const history = await LocationLog.find(query)
+            .sort({ timestamp: -1 })
+            .limit(limit)
+            .lean();
+
+        res.json({
+            success: true,
+            history: history.map(log => ({
+                lat: log.location.coordinates[1],
+                lng: log.location.coordinates[0],
+                speed: log.speed,
+                heading: log.heading,
+                accuracy: log.accuracy,
+                battery: log.battery,
+                timestamp: log.timestamp
+            })),
+            count: history.length
+        });
     } catch (error) {
         res.status(500).json({ success: false, message: error.message });
     }
