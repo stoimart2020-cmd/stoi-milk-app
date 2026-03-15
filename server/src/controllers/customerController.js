@@ -80,6 +80,10 @@ exports.createCustomer = async (req, res) => {
             }
         }
 
+        if (req.user) {
+            customerData.createdBy = req.user._id.toString();
+        }
+
         user = await User.create(customerData);
         res.status(201).json({ success: true, result: user });
     } catch (error) {
@@ -109,6 +113,10 @@ exports.getAllCustomers = async (req, res) => {
         const { search, hub, serviceArea, factory, district, city, area, stockPoint, deliveryBoy } = req.query;
         let query = { role: { $in: ["CUSTOMER", "LEAD"] } };
         query = scopeCustomerFilter(req.scope, query);
+
+        if (req.user && req.user.role === 'FIELD_MARKETING') {
+            query.createdBy = req.user._id.toString();
+        }
 
         const hubIds = await resolveHubs({ factory, district, city, area, hub });
         if (hubIds) {

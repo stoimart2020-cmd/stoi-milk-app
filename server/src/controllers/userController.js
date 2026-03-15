@@ -469,3 +469,30 @@ exports.updateUserProfile = async (req, res) => {
         res.status(500).json({ success: false, message: error.message });
     }
 };
+
+exports.checkCustomerExistence = async (req, res) => {
+    try {
+        const { mobile } = req.query;
+        if (!mobile) return res.status(400).json({ success: false, message: "Mobile number required" });
+
+        const user = await User.findOne({ mobile }).select('name role');
+        const employee = await Employee.findOne({ mobile }).select('name role');
+
+        if (user || employee) {
+            const foundUser = user || employee;
+            return res.status(200).json({
+                success: true,
+                exists: true,
+                message: "User already exists in the system",
+                result: {
+                    name: foundUser.name ? (foundUser.name.charAt(0) + "****" + foundUser.name.slice(-1)) : "Sensitive Name",
+                    role: foundUser.role
+                }
+            });
+        }
+
+        res.status(200).json({ success: true, exists: false, message: "User not found" });
+    } catch (error) {
+        res.status(500).json({ success: false, message: error.message });
+    }
+};

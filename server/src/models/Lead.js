@@ -57,6 +57,7 @@ const leadSchema = new mongoose.Schema(
 
         // Assignment
         assignedTo: { type: mongoose.Schema.Types.ObjectId, ref: "User" },
+        createdBy: { type: mongoose.Schema.Types.ObjectId, ref: "Employee" },
 
         // Interactions
         interactions: [interactionSchema],

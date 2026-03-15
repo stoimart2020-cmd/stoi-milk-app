@@ -11,6 +11,11 @@ exports.getLeads = async (req, res) => {
         if (priority) query.priority = priority;
         if (assignedTo) query.assignedTo = assignedTo;
 
+        // Restriction: Field Sales only see leads they created
+        if (req.user.role === 'FIELD_MARKETING') {
+            query.createdBy = req.user._id;
+        }
+
         if (search) {
             query.$or = [
                 { name: { $regex: search, $options: "i" } },
@@ -57,7 +62,11 @@ exports.getLeads = async (req, res) => {
 // Create new lead
 exports.createLead = async (req, res) => {
     try {
-        const lead = await Lead.create(req.body);
+        const leadData = {
+            ...req.body,
+            createdBy: req.user._id
+        };
+        const lead = await Lead.create(leadData);
 
         // Auto-assign if not assigned
         if (!lead.assignedTo) {
@@ -358,19 +367,26 @@ exports.bulkAssignLeads = async (req, res) => {
 // Get CRM dashboard stats
 exports.getDashboardStats = async (req, res) => {
     try {
-        const totalLeads = await Lead.countDocuments();
-        const newLeads = await Lead.countDocuments({ status: "New" });
-        const hotLeads = await Lead.countDocuments({ priority: "hot" });
-        const convertedLeads = await Lead.countDocuments({ status: "Converted" });
+        const query = {};
+        if (req.user.role === 'FIELD_MARKETING') {
+            query.createdBy = req.user._id;
+        }
+
+        const totalLeads = await Lead.countDocuments(query);
+        const newLeads = await Lead.countDocuments({ ...query, status: "New" });
+        const hotLeads = await Lead.countDocuments({ ...query, priority: "hot" });
+        const convertedLeads = await Lead.countDocuments({ ...query, status: "Converted" });
 
         const today = new Date();
         today.setHours(0, 0, 0, 0);
 
         const leadsToday = await Lead.countDocuments({
+            ...query,
             createdAt: { $gte: today }
         });
 
         const followUpsToday = await Lead.countDocuments({
+            ...query,
             followUpDate: {
                 $gte: today,
                 $lt: new Date(today.getTime() + 24 * 60 * 60 * 1000)

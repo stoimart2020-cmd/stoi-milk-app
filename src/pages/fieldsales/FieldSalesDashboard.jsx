@@ -14,12 +14,13 @@ import toast from "react-hot-toast";
 import { queryClient } from "../../lib/queryClient";
 import { useCurrentAdmin } from "../../hook/useCurrentAdmin";
 
-import { getAllCustomers, createCustomer } from "../../lib/api/customers";
+import { getAllCustomers, createCustomer, updateCustomer } from "../../lib/api/customers";
 import { getAllProducts } from "../../lib/api/products";
 import { createSubscription } from "../../lib/api/subscriptions";
 import { createOrder } from "../../lib/api/orders";
 import { createQrCode } from "../../lib/api/payments";
 import { getPublicSettings } from "../../lib/api/settings";
+import { axiosInstance } from "../../lib/axios";
 
 // Fix Leaflet icons
 delete L.Icon.Default.prototype._getIconUrl;
@@ -159,6 +160,70 @@ export const FieldSalesDashboard = () => {
         },
     });
 
+    const searchCustomerMutation = useMutation({
+        mutationFn: async (mobile) => {
+            const res = await axiosInstance.get(`/api/customers/mobile/${mobile}`);
+            return res.data.result;
+        },
+        onSuccess: (data) => {
+            setSelectedLead(data);
+            setSubView(null);
+            toast.success("Customer found!");
+        },
+        onError: (err) => {
+            toast.error(err.response?.data?.message || "Customer not found");
+        },
+    });
+
+    const updateLeadMutation = useMutation({
+        mutationFn: updateCustomer,
+        onSuccess: (data) => {
+            toast.success("Lead updated successfully!");
+            refetchCustomers();
+            setSelectedLead(data.result || data);
+            setSubView(null);
+        },
+        onError: (err) => {
+            toast.error(err.response?.data?.message || "Failed to update lead");
+        },
+    });
+
+    const updateLocationMutation = useMutation({
+        mutationFn: async (coords) => {
+            await axiosInstance.post("/api/tracking/update-location", coords);
+        }
+    });
+
+    // Tracking useEffect
+    useEffect(() => {
+        if (!user || user.role !== 'FIELD_MARKETING') return;
+
+        const updateLocation = () => {
+            navigator.geolocation.getCurrentPosition(
+                (pos) => {
+                    updateLocationMutation.mutate({
+                        lat: pos.coords.latitude,
+                        lng: pos.coords.longitude,
+                        accuracy: pos.coords.accuracy,
+                        speed: pos.coords.speed,
+                        heading: pos.coords.heading,
+                        battery: null // Optional
+                    });
+                },
+                (err) => console.error("Tracking error:", err),
+                { enableHighAccuracy: true }
+            );
+        };
+
+        // Initial update
+        updateLocation();
+
+        // Update every 30 seconds
+        const interval = setInterval(updateLocation, 30000);
+
+        return () => clearInterval(interval);
+    }, [user]);
+
     // --- Handlers ---
     const handleDetectLocation = () => {
         setDetectingLocation(true);
@@ -191,7 +256,7 @@ export const FieldSalesDashboard = () => {
             name: leadForm.name,
             mobile: leadForm.mobile,
             email: leadForm.email || undefined,
-            role: "LEAD",
+            role: (selectedLead && subView === "edit_lead") ? selectedLead.role : "LEAD",
             address: leadForm.address
                 ? {
                     fullAddress: leadForm.address,
@@ -206,7 +271,11 @@ export const FieldSalesDashboard = () => {
                 : undefined,
         };
 
-        createLeadMutation.mutate(payload);
+        if (selectedLead && subView === "edit_lead") {
+            updateLeadMutation.mutate({ id: selectedLead._id, data: payload });
+        } else {
+            createLeadMutation.mutate(payload);
+        }
     };
 
     const handleConvert = () => {
@@ -364,7 +433,9 @@ export const FieldSalesDashboard = () => {
                 <button onClick={() => setSubView(null)} className="btn btn-ghost btn-sm btn-circle">
                     <ArrowLeft className="w-5 h-5" />
                 </button>
-                <h2 className="text-lg font-bold text-gray-800">Add New Lead</h2>
+                <h2 className="text-lg font-bold text-gray-800">
+                    {subView === "edit_lead" ? "Edit Lead" : "Add New Lead"}
+                </h2>
             </div>
 
             <form onSubmit={handleCreateLead} className="space-y-4">
@@ -388,15 +459,39 @@ export const FieldSalesDashboard = () => {
                     <label className="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-2 block">
                         <Phone className="w-3 h-3 inline mr-1" /> Mobile Number *
                     </label>
-                    <input
-                        type="tel"
-                        className="input input-bordered w-full"
-                        placeholder="10-digit mobile number"
-                        value={leadForm.mobile}
-                        onChange={(e) => setLeadForm({ ...leadForm, mobile: e.target.value })}
-                        maxLength={10}
-                        required
-                    />
+                    <div className="flex gap-2">
+                        <input
+                            type="tel"
+                            className="input input-bordered flex-1"
+                            placeholder="10-digit mobile number"
+                            value={leadForm.mobile}
+                            onChange={(e) => setLeadForm({ ...leadForm, mobile: e.target.value })}
+                            maxLength={10}
+                            required
+                        />
+                        <button
+                            type="button"
+                            onClick={async () => {
+                                if (leadForm.mobile.length !== 10) {
+                                    toast.error("Enter a valid 10-digit mobile number");
+                                    return;
+                                }
+                                try {
+                                    const res = await axiosInstance.get(`/api/users/check-existence?mobile=${leadForm.mobile}`);
+                                    if (res.data.exists) {
+                                        toast.success(`Found: ${res.data.result.name} (${res.data.result.role})`, { icon: '🔍' });
+                                    } else {
+                                        toast.error("Not found in system", { icon: '✅' });
+                                    }
+                                } catch (err) {
+                                    toast.error("Failed to check existence");
+                                }
+                            }}
+                            className="btn btn-teal btn-outline btn-sm h-auto"
+                        >
+                            Check
+                        </button>
+                    </div>
                 </div>
 
                 {/* Email */}
@@ -474,12 +569,12 @@ export const FieldSalesDashboard = () => {
                 <button
                     type="submit"
                     className="btn w-full bg-gradient-to-r from-teal-500 to-emerald-500 text-white border-0 text-base shadow-lg"
-                    disabled={createLeadMutation.isPending}
+                    disabled={createLeadMutation.isPending || updateLeadMutation.isPending}
                 >
-                    {createLeadMutation.isPending ? (
-                        <><Loader2 className="w-5 h-5 animate-spin" /> Creating...</>
+                    {createLeadMutation.isPending || updateLeadMutation.isPending ? (
+                        <><Loader2 className="w-5 h-5 animate-spin" /> {subView === "edit_lead" ? "Updating..." : "Creating..."}</>
                     ) : (
-                        <><Plus className="w-5 h-5" /> Create Lead</>
+                        <>{subView === "edit_lead" ? <RefreshCw className="w-5 h-5" /> : <Plus className="w-5 h-5" />} {subView === "edit_lead" ? "Update Lead" : "Create Lead"}</>
                     )}
                 </button>
             </form>
@@ -536,6 +631,29 @@ export const FieldSalesDashboard = () => {
                 {/* Actions */}
                 <div className="space-y-3">
                     <h3 className="text-sm font-bold text-gray-500 uppercase tracking-wider">Actions</h3>
+
+                    <button
+                        onClick={() => {
+                            setLeadForm({
+                                name: selectedLead.name || "",
+                                mobile: selectedLead.mobile || "",
+                                email: selectedLead.email || "",
+                                address: selectedLead.address?.fullAddress || "",
+                            });
+                            setLeadLocation(selectedLead.address?.location?.coordinates || null);
+                            setSubView("edit_lead");
+                        }}
+                        className="w-full bg-white rounded-2xl p-4 shadow-sm border border-gray-100 flex items-center gap-4 hover:border-teal-300 hover:shadow-md transition-all active:scale-[0.98]"
+                    >
+                        <div className="w-12 h-12 bg-teal-50 rounded-xl flex items-center justify-center text-teal-600">
+                            <Plus className="w-6 h-6" />
+                        </div>
+                        <div className="text-left">
+                            <p className="font-semibold text-gray-800">Edit Lead Info</p>
+                            <p className="text-xs text-gray-400">Update name, mobile, address or location</p>
+                        </div>
+                        <ChevronRight className="w-5 h-5 text-gray-300 ml-auto" />
+                    </button>
 
                     <button
                         onClick={() => setSubView("convert")}
@@ -856,7 +974,7 @@ export const FieldSalesDashboard = () => {
 
     const renderLeads = () => {
         // Sub-views
-        if (subView === "add_lead") return renderAddLead();
+        if (subView === "add_lead" || subView === "edit_lead") return renderAddLead();
         if (subView === "convert" && selectedLead) return renderConvert();
         if (subView === "payment" && selectedLead) return renderPayment();
         if (selectedLead) return renderLeadDetail();
@@ -879,18 +997,29 @@ export const FieldSalesDashboard = () => {
                 </div>
 
                 {/* Search */}
-                <div className="relative">
-                    <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-gray-400" />
-                    <input
-                        type="text"
-                        className="input input-bordered w-full pl-10"
-                        placeholder="Search by name, mobile, email..."
-                        value={searchTerm}
-                        onChange={(e) => setSearchTerm(e.target.value)}
-                    />
-                    {searchTerm && (
-                        <button onClick={() => setSearchTerm("")} className="absolute right-3 top-1/2 -translate-y-1/2">
-                            <X className="w-4 h-4 text-gray-400" />
+                <div className="flex gap-2">
+                    <div className="relative flex-1">
+                        <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-gray-400" />
+                        <input
+                            type="text"
+                            className="input input-bordered w-full pl-10"
+                            placeholder="Search name, mobile, email..."
+                            value={searchTerm}
+                            onChange={(e) => setSearchTerm(e.target.value)}
+                        />
+                        {searchTerm && (
+                            <button onClick={() => setSearchTerm("")} className="absolute right-3 top-1/2 -translate-y-1/2">
+                                <X className="w-4 h-4 text-gray-400" />
+                            </button>
+                        )}
+                    </div>
+                    {searchTerm.length === 10 && !isNaN(searchTerm) && (
+                        <button 
+                            onClick={() => searchCustomerMutation.mutate(searchTerm)}
+                            className="btn btn-teal shadow-md"
+                            disabled={searchCustomerMutation.isPending}
+                        >
+                            {searchCustomerMutation.isPending ? <Loader2 className="w-4 h-4 animate-spin" /> : "Verify"}
                         </button>
                     )}
                 </div>

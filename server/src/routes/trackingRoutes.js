@@ -15,11 +15,11 @@ const Employee = require('../models/Employee');
  */
 router.post('/update-location', protect, async (req, res) => {
     try {
-        const riderId = req.user._id;
+        const employeeId = req.user._id;
         const { lat, lng, accuracy, speed, heading, battery } = req.body;
 
         // Update in-memory tracker
-        const result = gpsTracker.updateLocation(riderId, {
+        const result = gpsTracker.updateLocation(employeeId, {
             lat,
             lng,
             accuracy,
@@ -30,7 +30,7 @@ router.post('/update-location', protect, async (req, res) => {
         });
 
         // Also persist to DB for durability
-        await Employee.findByIdAndUpdate(riderId, {
+        await Employee.findByIdAndUpdate(employeeId, {
             liveLocation: {
                 coordinates: {
                     type: "Point",

@@ -7,10 +7,12 @@ const {
     createUser,
     updateUser,
     getUserById,
-    updateUserProfile
+    updateUserProfile,
+    checkCustomerExistence
 } = require("../controllers/userController");
 const { attachScope } = require("../middleware/scope");
 
+router.get("/check-existence", protect, checkCustomerExistence);
 router.get("/", protect, authorize("SUPERADMIN", "ADMIN", "FINANCE_TEAM"), attachScope, getAllUsers);
 router.post("/", protect, authorize("SUPERADMIN"), createUser);
 router.put("/profile", protect, updateUserProfile);
