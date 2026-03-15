@@ -7,6 +7,7 @@ const router = express.Router();
 const { protect, adminOnly } = require('../middleware/auth');
 const gpsTracker = require('../services/gpsTracker');
 const Employee = require('../models/Employee');
+const LocationLog = require('../models/LocationLog');
 
 /**
  * @route   POST /api/tracking/update-location
@@ -43,6 +44,20 @@ router.post('/update-location', protect, async (req, res) => {
                 lastUpdated: new Date(),
                 isTracking: true,
             }
+        });
+
+        // Log movement for historical tracking
+        await LocationLog.create({
+            employee: employeeId,
+            location: {
+                type: "Point",
+                coordinates: [lng, lat]
+            },
+            speed: speed || 0,
+            heading: heading || 0,
+            accuracy: accuracy || 0,
+            battery: battery || null,
+            timestamp: new Date()
         });
 
         res.json(result);
