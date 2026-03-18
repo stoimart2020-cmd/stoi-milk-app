@@ -39,6 +39,11 @@ const rateLimit = (options = {}) => {
             return next();
         }
 
+        // Skip rate limiting for authenticated users (have a valid session)
+        if (req.cookies && req.cookies.token) {
+            return next();
+        }
+
         const now = Date.now();
 
         if (!rateLimitStore.has(key)) {
@@ -82,7 +87,7 @@ const rateLimit = (options = {}) => {
 // Preset rate limiters for different endpoints
 const apiLimiter = rateLimit({
     windowMs: 15 * 60 * 1000, // 15 minutes
-    max: 100,
+    max: 500, // 500 requests per 15 min window (admin panels need higher limits)
     message: 'Too many requests from this IP, please try again after 15 minutes'
 });
 

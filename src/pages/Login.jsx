@@ -1,42 +1,97 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { useNavigate } from "react-router-dom";
 import { queryClient } from "../lib/queryClient";
 import { axiosInstance } from "../lib/axios";
-import { checkUserStatus, loginWithPin, setPin } from "../lib/api/auth";
+import { loginWithPin, setPin } from "../lib/api/auth";
 import toast from "react-hot-toast";
+import {
+  auth,
+  RecaptchaVerifier,
+  signInWithPhoneNumber,
+  initializeFirebase,
+} from "../lib/firebase";
+import { getPublicSettings } from "../lib/api/settings";
 
 export const Login = () => {
   const [mobile, setMobile] = useState("");
-  const [step, setStep] = useState("mobile_entry"); // mobile_entry, otp_entry, pin_entry, set_pin
+  const [step, setStep] = useState("mobile_entry"); // mobile_entry | otp_entry | pin_entry | set_pin
   const [otp, setOtp] = useState("");
   const [pin, setPinValue] = useState("");
   const [confirmPin, setConfirmPin] = useState("");
   const [loading, setLoading] = useState(false);
   const [isResettingPin, setIsResettingPin] = useState(false);
+  const [confirmationResult, setConfirmationResult] = useState(null);
+  const [useFirebase, setUseFirebase] = useState(false);
+  const recaptchaRef = useRef(null);
+  const recaptchaWidgetRef = useRef(null);
   const navigate = useNavigate();
 
+  // Detect if Firebase is configured
+  useEffect(() => {
+    const checkFirebase = async () => {
+      try {
+        const publicSettings = await getPublicSettings();
+        const settings = publicSettings?.result;
+        if (settings?.firebase?.enabled) {
+          initializeFirebase(settings.firebase);
+          setUseFirebase(true);
+        } else if (import.meta.env.VITE_FIREBASE_API_KEY) {
+          setUseFirebase(true);
+        }
+      } catch {
+        // Firebase not configured, falls back to backend OTP
+      }
+    };
+    checkFirebase();
+  }, []);
+
+  // Setup reCAPTCHA when Firebase OTP flow starts
+  const setupRecaptcha = () => {
+    if (!auth) {
+      throw new Error("Firebase not initialized");
+    }
+    if (recaptchaWidgetRef.current) return; // already set up
+
+    const verifier = new RecaptchaVerifier(auth, "recaptcha-container", {
+      size: "invisible",
+      callback: () => {},
+    });
+    recaptchaRef.current = verifier;
+    recaptchaWidgetRef.current = verifier;
+  };
+
+  const clearRecaptcha = () => {
+    if (recaptchaRef.current) {
+      try {
+        recaptchaRef.current.clear();
+      } catch {}
+      recaptchaRef.current = null;
+      recaptchaWidgetRef.current = null;
+    }
+  };
+
+  // ── Step 1: Check user status & send OTP ───────────────────────────────
   const handleNext = async () => {
-    if (!mobile || mobile.length < 10) return toast.error("Enter valid mobile");
+    if (!mobile || mobile.length < 10)
+      return toast.error("Enter valid 10-digit mobile number");
     setLoading(true);
     try {
-      const status = await checkUserStatus(mobile);
-      if (status.needsOtp) {
-        // Trigger OTP send
-        const res = await axiosInstance.post("/api/auth/send-otp", { mobile });
-        if (res.data.success) {
-          setStep("otp_entry");
-          toast.success("OTP sent successfully");
-        }
-      } else if (status.hasPin || status.hasPassword) {
+      // Check user status first
+      const statusRes = await axiosInstance.post("/api/auth/check-status", {
+        mobile,
+      });
+      const status = statusRes.data;
+
+      if (status.hasPin || status.hasPassword) {
         setStep("pin_entry");
-      } else if (status.exists) {
-        // User exists but has no credentials (migrated user)
-        // We'll still send OTP so they can set their first PIN
-        const res = await axiosInstance.post("/api/auth/send-otp", { mobile });
-        if (res.data.success) {
-          setStep("otp_entry");
-          toast.success("Identity verified via OTP. Please set your PIN next.");
-        }
+        return;
+      }
+
+      // Need OTP — use Firebase if enabled, else backend SMS
+      if (useFirebase && auth) {
+        await sendFirebaseOtp();
+      } else {
+        await sendBackendOtp();
       }
     } catch (err) {
       toast.error(err.response?.data?.message || "Something went wrong");
@@ -45,28 +100,95 @@ export const Login = () => {
     }
   };
 
+  // ── Firebase OTP Send ────────────────────────────────────────────────────
+  const sendFirebaseOtp = async () => {
+    try {
+      setupRecaptcha();
+      const phoneNumber = `+91${mobile}`; // Adjust country code if needed
+      const result = await signInWithPhoneNumber(
+        auth,
+        phoneNumber,
+        recaptchaRef.current
+      );
+      setConfirmationResult(result);
+      setStep("otp_entry");
+      toast.success("OTP sent via Firebase");
+    } catch (err) {
+      clearRecaptcha();
+      console.error("Firebase OTP error:", err);
+      // Fallback to backend SMS
+      toast("Trying alternate OTP delivery...", { icon: "🔄" });
+      await sendBackendOtp();
+    }
+  };
+
+  // ── Backend SMS OTP Send ─────────────────────────────────────────────────
+  const sendBackendOtp = async () => {
+    const res = await axiosInstance.post("/api/auth/send-otp", { mobile });
+    if (res.data.success) {
+      setConfirmationResult(null); // signal: use backend verify
+      setStep("otp_entry");
+      toast.success("OTP sent to your mobile");
+    }
+  };
+
+  // ── Step 2: Verify OTP ───────────────────────────────────────────────────
   const handleVerifyOtp = async () => {
-    if (!otp) return toast.error("Enter OTP");
+    if (!otp || otp.length < 4) return toast.error("Enter the OTP");
     setLoading(true);
     try {
-      const res = await axiosInstance.post("/api/auth/verify-otp", { mobile, otp });
-      if (res.data.success) {
-        // After OTP, check if we need to set a PIN (either new user or resetting)
-        const user = res.data.result;
+      let user;
+
+      if (confirmationResult) {
+        // Firebase verification path
+        const firebaseResult = await confirmationResult.confirm(otp);
+        const idToken = await firebaseResult.user.getIdToken();
+
+        const res = await axiosInstance.post("/api/auth/firebase-verify", {
+          idToken,
+          mobile,
+        });
+
+        if (!res.data.success) throw new Error("Backend validation failed");
+        user = res.data.result;
+
+        // Set session cookie was already set by backend; invalidate cache
         if (!user.pin || isResettingPin) {
           setStep("set_pin");
-        } else {
-          await queryClient.invalidateQueries({ queryKey: ["user"] });
-          navigate("/dashboard");
+          return;
+        }
+      } else {
+        // Backend OTP verification path (fallback)
+        const res = await axiosInstance.post("/api/auth/verify-otp", {
+          mobile,
+          otp,
+        });
+        if (!res.data.success) throw new Error("Invalid OTP");
+        user = res.data.result;
+
+        if (!user.pin || isResettingPin) {
+          setStep("set_pin");
+          return;
         }
       }
+
+      await queryClient.invalidateQueries({ queryKey: ["user"] });
+      navigate("/dashboard");
     } catch (err) {
-      toast.error(err.response?.data?.message || "Invalid OTP");
+      console.error("OTP verification error:", err);
+      const msg =
+        err?.code === "auth/invalid-verification-code"
+          ? "Invalid OTP. Please try again."
+          : err?.code === "auth/code-expired"
+          ? "OTP has expired. Please request a new one."
+          : err.response?.data?.message || "OTP verification failed";
+      toast.error(msg);
     } finally {
       setLoading(false);
     }
   };
 
+  // ── PIN Login ────────────────────────────────────────────────────────────
   const handleLoginWithPin = async () => {
     if (pin.length !== 4) return toast.error("Enter 4-digit PIN");
     setLoading(true);
@@ -83,6 +205,7 @@ export const Login = () => {
     }
   };
 
+  // ── Set PIN ──────────────────────────────────────────────────────────────
   const handleSetPin = async () => {
     if (pin.length !== 4) return toast.error("PIN must be 4 digits");
     if (pin !== confirmPin) return toast.error("PINs do not match");
@@ -101,17 +224,37 @@ export const Login = () => {
     }
   };
 
+  // ── Forgot PIN → resend OTP ──────────────────────────────────────────────
   const handleForgotPin = async () => {
     setLoading(true);
+    setIsResettingPin(true);
+    clearRecaptcha();
     try {
-      const res = await axiosInstance.post("/api/auth/send-otp", { mobile });
-      if (res.data.success) {
-        setStep("otp_entry");
-        setIsResettingPin(true);
-        toast.success("OTP sent to your mobile");
+      if (useFirebase && auth) {
+        await sendFirebaseOtp();
+      } else {
+        await sendBackendOtp();
       }
-    } catch (err) {
-      toast.error("Failed to send verification OTP");
+    } catch {
+      toast.error("Failed to send OTP");
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  // ── Resend OTP ───────────────────────────────────────────────────────────
+  const handleResendOtp = async () => {
+    setOtp("");
+    clearRecaptcha();
+    setLoading(true);
+    try {
+      if (useFirebase && auth) {
+        await sendFirebaseOtp();
+      } else {
+        await sendBackendOtp();
+      }
+    } catch {
+      toast.error("Failed to resend OTP");
     } finally {
       setLoading(false);
     }
@@ -119,91 +262,174 @@ export const Login = () => {
 
   return (
     <div className="h-screen flex justify-center items-center bg-emerald-500">
+      {/* Invisible reCAPTCHA container — required by Firebase */}
+      <div id="recaptcha-container" />
+
       <div className="w-full max-w-sm sm:m-0 m-5 space-y-6 border-2 border-emerald-500 rounded-xl px-6 py-10 bg-white shadow-2xl">
         <div className="flex justify-center">
           <img src="/images/logo.png" alt="Logo" className="w-24 h-auto" />
         </div>
 
+        {/* ── Step 1: Mobile Entry ── */}
         {step === "mobile_entry" && (
           <div className="space-y-4">
-            <h2 className="text-center font-bold text-gray-700 text-lg">Member Login</h2>
-            <input
-              type="tel"
-              placeholder="Mobile number"
-              className="input input-bordered border-emerald-500 focus:border-emerald-600 w-full rounded-full bg-white text-gray-800"
-              onChange={(e) => setMobile(e.target.value)}
-              value={mobile}
-            />
+            <h2 className="text-center font-bold text-gray-700 text-lg">
+              Member Login
+            </h2>
+            <div className="relative">
+              <span className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-500 text-sm font-medium">
+                +91
+              </span>
+              <input
+                type="tel"
+                placeholder="Mobile number"
+                maxLength={10}
+                className="input input-bordered border-emerald-500 focus:border-emerald-600 w-full rounded-full bg-white text-gray-800 pl-12"
+                onChange={(e) =>
+                  setMobile(e.target.value.replace(/\D/g, "").slice(0, 10))
+                }
+                value={mobile}
+                onKeyDown={(e) => e.key === "Enter" && handleNext()}
+              />
+            </div>
             <button
               className="btn btn-success text-white rounded-full w-full"
               onClick={handleNext}
               disabled={loading}
             >
-              {loading ? <span className="loading loading-spinner"></span> : "NEXT"}
+              {loading ? (
+                <span className="loading loading-spinner" />
+              ) : (
+                "NEXT"
+              )}
             </button>
+            {useFirebase && (
+              <p className="text-center text-xs text-emerald-600 flex items-center justify-center gap-1">
+                <svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="currentColor"><path d="M12 2L2 19.7h20L12 2zm0 3.2l7.4 13.5H4.6L12 5.2z"/></svg>
+                Secured with Firebase
+              </p>
+            )}
           </div>
         )}
 
-        {step === "pin_entry" && (
-          <div className="space-y-4 text-center">
-            <h2 className="font-bold text-gray-700 text-lg">Enter Your PIN</h2>
-            <p className="text-xs text-gray-500">Welcome back! Enter your 4-digit PIN for {mobile}</p>
-            <input
-              type="password"
-              maxLength={4}
-              placeholder="4-digit PIN"
-              className="input input-bordered border-emerald-500 text-center text-2xl tracking-widest w-full rounded-full bg-white text-gray-800"
-              onChange={(e) => setPinValue(e.target.value.replace(/\D/g, ""))}
-              value={pin}
-            />
-            <button
-              className="btn btn-success text-white rounded-full w-full"
-              onClick={handleLoginWithPin}
-              disabled={loading}
-            >
-              {loading ? <span className="loading loading-spinner"></span> : "LOGIN"}
-            </button>
-            <div className="flex justify-between px-2 mt-2">
-              <button onClick={() => setStep("mobile_entry")} className="text-xs text-emerald-600 hover:underline">Change Mobile</button>
-              <button onClick={handleForgotPin} className="text-xs text-emerald-600 hover:underline">Forgot PIN?</button>
-            </div>
-          </div>
-        )}
-
+        {/* ── Step 2: OTP Entry ── */}
         {step === "otp_entry" && (
           <div className="space-y-4">
-            <h2 className="text-center font-bold text-gray-700 text-lg">Verify Mobile</h2>
-            <p className="text-center text-xs text-gray-500">We've sent a 4-digit OTP to {mobile}</p>
+            <h2 className="text-center font-bold text-gray-700 text-lg">
+              Verify Mobile
+            </h2>
+            <p className="text-center text-xs text-gray-500">
+              We&apos;ve sent a 6-digit OTP to +91 {mobile}
+            </p>
             <input
               type="text"
-              maxLength={4}
-              placeholder="Enter 4-digit OTP"
-              className="input input-bordered border-emerald-500 text-center text-xl w-full rounded-full bg-white text-gray-800"
+              maxLength={6}
+              placeholder="Enter OTP"
+              className="input input-bordered border-emerald-500 text-center text-xl tracking-widest w-full rounded-full bg-white text-gray-800"
               onChange={(e) => setOtp(e.target.value.replace(/\D/g, ""))}
               value={otp}
+              onKeyDown={(e) => e.key === "Enter" && handleVerifyOtp()}
+              autoFocus
             />
             <button
               className="btn btn-success text-white rounded-full w-full"
               onClick={handleVerifyOtp}
               disabled={loading}
             >
-              {loading ? <span className="loading loading-spinner"></span> : "VERIFY OTP"}
+              {loading ? (
+                <span className="loading loading-spinner" />
+              ) : (
+                "VERIFY OTP"
+              )}
             </button>
-            <button onClick={() => setStep("mobile_entry")} className="text-xs text-center w-full text-emerald-600 hover:underline">Change mobile number</button>
+            <div className="flex justify-between px-2 mt-1">
+              <button
+                onClick={() => {
+                  clearRecaptcha();
+                  setStep("mobile_entry");
+                  setOtp("");
+                }}
+                className="text-xs text-emerald-600 hover:underline"
+              >
+                Change number
+              </button>
+              <button
+                onClick={handleResendOtp}
+                disabled={loading}
+                className="text-xs text-emerald-600 hover:underline"
+              >
+                Resend OTP
+              </button>
+            </div>
           </div>
         )}
 
+        {/* ── Step 3: PIN Entry ── */}
+        {step === "pin_entry" && (
+          <div className="space-y-4 text-center">
+            <h2 className="font-bold text-gray-700 text-lg">Enter Your PIN</h2>
+            <p className="text-xs text-gray-500">
+              Welcome back! Enter your 4-digit PIN for {mobile}
+            </p>
+            <input
+              type="password"
+              maxLength={4}
+              placeholder="4-digit PIN"
+              className="input input-bordered border-emerald-500 text-center text-2xl tracking-widest w-full rounded-full bg-white text-gray-800"
+              onChange={(e) =>
+                setPinValue(e.target.value.replace(/\D/g, ""))
+              }
+              value={pin}
+              onKeyDown={(e) => e.key === "Enter" && handleLoginWithPin()}
+              autoFocus
+            />
+            <button
+              className="btn btn-success text-white rounded-full w-full"
+              onClick={handleLoginWithPin}
+              disabled={loading}
+            >
+              {loading ? (
+                <span className="loading loading-spinner" />
+              ) : (
+                "LOGIN"
+              )}
+            </button>
+            <div className="flex justify-between px-2 mt-2">
+              <button
+                onClick={() => setStep("mobile_entry")}
+                className="text-xs text-emerald-600 hover:underline"
+              >
+                Change Mobile
+              </button>
+              <button
+                onClick={handleForgotPin}
+                className="text-xs text-emerald-600 hover:underline"
+              >
+                Forgot PIN?
+              </button>
+            </div>
+          </div>
+        )}
+
+        {/* ── Step 4: Set PIN ── */}
         {step === "set_pin" && (
           <div className="space-y-4">
-            <h2 className="text-center font-bold text-gray-700 text-lg">Create Login PIN</h2>
-            <p className="text-center text-xs text-gray-500">Select a 4-digit PIN for future logins</p>
+            <h2 className="text-center font-bold text-gray-700 text-lg">
+              Create Login PIN
+            </h2>
+            <p className="text-center text-xs text-gray-500">
+              Set a 4-digit PIN for faster future logins
+            </p>
             <input
               type="password"
               maxLength={4}
               placeholder="Create 4-digit PIN"
               className="input input-bordered border-emerald-500 text-center text-xl w-full rounded-full bg-white text-gray-800"
-              onChange={(e) => setPinValue(e.target.value.replace(/\D/g, ""))}
+              onChange={(e) =>
+                setPinValue(e.target.value.replace(/\D/g, ""))
+              }
               value={pin}
+              autoFocus
             />
             <input
               type="password"
@@ -218,7 +444,11 @@ export const Login = () => {
               onClick={handleSetPin}
               disabled={loading}
             >
-              {loading ? <span className="loading loading-spinner"></span> : "SET PIN & FINISH"}
+              {loading ? (
+                <span className="loading loading-spinner" />
+              ) : (
+                "SET PIN & FINISH"
+              )}
             </button>
           </div>
         )}
@@ -228,7 +458,20 @@ export const Login = () => {
             href="https://stoimilk.com"
             className="text-sm font-semibold text-emerald-600 hover:text-emerald-700 w-full text-center hover:underline flex items-center justify-center gap-1"
           >
-            <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="m3 9 9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z" /><polyline points="9 22 9 12 15 12 15 22" /></svg>
+            <svg
+              xmlns="http://www.w3.org/2000/svg"
+              width="16"
+              height="16"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="2"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+            >
+              <path d="m3 9 9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z" />
+              <polyline points="9 22 9 12 15 12 15 22" />
+            </svg>
             Go to Home Page
           </a>
         </div>
@@ -236,4 +479,3 @@ export const Login = () => {
     </div>
   );
 };
-

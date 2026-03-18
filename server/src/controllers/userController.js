@@ -262,7 +262,100 @@ exports.createUser = async (req, res) => {
             ...otherDetails
         });
 
+        // If an Employee was created, also create a "Shadow" User record with the same ID
+        // This allows them to log in and use customer features (Subscriptions, Orders, etc.)
+        if (Model === Employee) {
+            try {
+                // Check if user already exists (just in case)
+                const existingUser = await User.findById(user._id);
+                if (!existingUser) {
+                    await User.create({
+                        _id: user._id, // Share the same ID
+                        name,
+                        mobile,
+                        email,
+                        password,
+                        role, // e.g., RIDER
+                        isActive: true
+                    });
+                }
+            } catch (userErr) {
+                console.error("Failed to create shadow User for Employee:", userErr);
+                // Non-blocking error, but should be logged
+            }
+        } else if (Model === User && role === "RIDER") {
+            // Edge case: if created in User table with RIDER role, also ensure Employee record
+             try {
+                const existingEmployee = await Employee.findById(user._id);
+                if (!existingEmployee) {
+                    await Employee.create({
+                        _id: user._id,
+                        name,
+                        mobile,
+                        email,
+                        password,
+                        role,
+                        isActive: true
+                    });
+                }
+            } catch (empErr) {
+                console.error("Failed to create shadow Employee for User:", empErr);
+            }
+        }
+
         res.status(201).json({ success: true, message: "User created successfully", result: user });
+    } catch (error) {
+        res.status(500).json({ success: false, message: error.message });
+    }
+};
+
+exports.updateUser = async (req, res) => {
+    try {
+        const { id } = req.params;
+        const updates = req.body;
+
+        let user = await User.findById(id);
+        let employee = await Employee.findById(id);
+
+        let primaryRecord = user || employee;
+
+        if (!primaryRecord) {
+            return res.status(404).json({ success: false, message: "User not found" });
+        }
+
+        const allowedUpdates = [
+            "name", "mobile", "email", "password", "walletBalance",
+            "fatherName", "aadharNumber", "joiningDate", "employeeType", "canCollectCash",
+            "bankDetails", "emergencyContact", "vehicleDetails", "documents", "salaryDetails", "address",
+            "isActive", "route", "customRole", "role",
+            "hub", "areas", "deliveryPoints",
+            "earnedSalary", "cashInHand", "kmEarnings"
+        ];
+
+        // Shared fields to sync across both models if both exist
+        const sharedFields = ["name", "mobile", "email", "password", "role", "isActive"];
+
+        // Update User if exists
+        if (user) {
+            allowedUpdates.forEach((field) => {
+                if (updates[field] !== undefined) {
+                    user[field] = updates[field];
+                }
+            });
+            await user.save();
+        }
+
+        // Update Employee if exists
+        if (employee) {
+            allowedUpdates.forEach((field) => {
+                if (updates[field] !== undefined) {
+                    employee[field] = updates[field];
+                }
+            });
+            await employee.save();
+        }
+
+        res.status(200).json({ success: true, message: "User updated successfully", result: user || employee });
     } catch (error) {
         res.status(500).json({ success: false, message: error.message });
     }

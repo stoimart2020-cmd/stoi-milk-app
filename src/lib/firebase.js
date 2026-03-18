@@ -1,6 +1,6 @@
 import { initializeApp } from "firebase/app";
 import { getMessaging, getToken, onMessage } from "firebase/messaging";
-import { getAuth } from "firebase/auth";
+import { getAuth, RecaptchaVerifier, signInWithPhoneNumber } from "firebase/auth";
 
 const firebaseConfig = {
     apiKey: import.meta.env.VITE_FIREBASE_API_KEY,
@@ -38,7 +38,7 @@ export const initializeFirebase = (config = null) => {
 // Auto-initialize if env vars are present
 initializeFirebase();
 
-export { app, auth, messaging };
+export { app, auth, messaging, RecaptchaVerifier, signInWithPhoneNumber };
 
 
 

@@ -618,7 +618,7 @@ export const FieldSalesDashboard = () => {
                         <span className={`badge ${selectedLead.role === "LEAD" ? "badge-warning" : "badge-success"} text-xs`}>
                             {selectedLead.role}
                         </span>
-                        <span className="badge badge-ghost text-xs text-white/80">
+                        <span className="badge bg-white text-teal-600 border-none font-bold text-[10px] px-2 py-0.5 h-auto shadow-sm">
                             ID: {selectedLead.customerId || "N/A"}
                         </span>
                     </div>

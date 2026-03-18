@@ -85,12 +85,31 @@ function AppRoute() {
 
   useEffect(() => {
     const initApp = async () => {
-      // 1. Fetch public settings for dynamic Firebase config
+      // 1. Fetch public settings for dynamic configuration
       try {
         const publicSettings = await getPublicSettings();
-        if (publicSettings?.result?.firebase?.enabled) {
-          initializeFirebase(publicSettings.result.firebase);
+        const settings = publicSettings?.result;
+
+        if (settings?.firebase?.enabled) {
+          initializeFirebase(settings.firebase);
         }
+
+        // Dynamic Site Title & Favicon
+        if (settings?.site?.siteName) {
+          document.title = settings.site.siteName;
+        }
+        
+        if (settings?.site?.favicon) {
+          const faviconUrl = settings.site.favicon;
+          let link = document.querySelector("link[rel~='icon']");
+          if (!link) {
+            link = document.createElement('link');
+            link.rel = 'icon';
+            document.head.appendChild(link);
+          }
+          link.href = faviconUrl;
+        }
+
       } catch (error) {
         console.error("Failed to load public settings:", error);
       }

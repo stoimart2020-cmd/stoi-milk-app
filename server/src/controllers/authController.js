@@ -45,6 +45,20 @@ exports.sendOtp = async (req, res) => {
             });
         }
 
+        // If user is an Employee, ensure they also exist in User collection for dual-role support
+        if (user instanceof Employee) {
+            const shadowUser = await User.findById(user._id);
+            if (!shadowUser) {
+                await User.create({
+                    _id: user._id,
+                    mobile: user.mobile,
+                    name: user.name,
+                    role: user.role,
+                    isActive: true
+                });
+            }
+        }
+
         user.otp = otp;
         user.otpExpires = Date.now() + 10 * 60 * 1000; // 10 mins
         await user.save();
@@ -67,18 +81,25 @@ exports.firebaseVerifyOtp = async (req, res) => {
         const { admin } = require("../config/firebase");
         const decodedToken = await admin.auth().verifyIdToken(idToken);
 
-        // Ensure the token's phone matches the requested mobile (basic check)
-        // Note: Firebase provides phone_number in format like +919999999999
+        // Security check: ensure token phone matches submitted mobile
+        const tokenPhone = decodedToken.phone_number || "";
+        const normalizedMobile = String(mobile).replace(/\D/g, "").slice(-10);
+        if (tokenPhone && !tokenPhone.endsWith(normalizedMobile)) {
+            return res.status(401).json({ success: false, message: "Phone number mismatch" });
+        }
 
         let user = await User.findOne({ mobile });
         if (!user) {
             user = await Employee.findOne({ mobile });
         }
 
+        const isNewUser = !user;
+
         if (!user) {
             user = await User.create({
                 mobile,
                 role: "CUSTOMER",
+                isMobileVerified: true,
                 address: {
                     location: {
                         type: "Point",
@@ -86,10 +107,27 @@ exports.firebaseVerifyOtp = async (req, res) => {
                     }
                 }
             });
+        } else if (user instanceof User) {
+            user.isMobileVerified = true;
+            await user.save();
         }
 
         const token = generateToken(user._id);
         res.cookie("token", token, { httpOnly: true, maxAge: 30 * 24 * 60 * 60 * 1000, path: "/" });
+
+        // Notify admins on new signup
+        if (isNewUser) {
+            const admins = await User.find({ role: { $in: ["SUPERADMIN", "ADMIN", "CUSTOMER_RELATIONS"] } });
+            for (const a of admins) {
+                await createNotification({
+                    recipient: a._id,
+                    title: "New Customer Signup",
+                    message: `New customer joined (Firebase): ${mobile}`,
+                    type: "success",
+                    link: "/administrator/dashboard/customers"
+                });
+            }
+        }
 
         res.status(200).json({ success: true, result: user, token });
 
@@ -175,6 +213,20 @@ exports.verifyOtp = async (req, res) => {
             console.log("Forcing RIDER role for test user");
             user.role = "RIDER";
             if (!user.name) user.name = "Test Rider";
+        }
+
+        // If user is an Employee, ensure they also exist in User collection for dual-role support
+        if (user instanceof Employee) {
+            const shadowUser = await User.findById(user._id);
+            if (!shadowUser) {
+                await User.create({
+                    _id: user._id,
+                    mobile: user.mobile,
+                    name: user.name,
+                    role: user.role,
+                    isActive: true
+                });
+            }
         }
 
         await user.save();
