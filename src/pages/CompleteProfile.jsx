@@ -47,7 +47,7 @@ function LocationMarker({ position, setPosition }) {
 }
 
 export const CompleteProfile = () => {
-    const { data: userData, isLoading } = useAuth();
+    const { data: userData, isLoading, logout } = useAuth();
     const navigate = useNavigate();
     const queryClient = useQueryClient();
     const user = userData?.data?.result;
@@ -170,7 +170,12 @@ export const CompleteProfile = () => {
         <div className="min-h-screen bg-base-200 flex items-center justify-center p-4">
             <div className="card bg-base-100 shadow-xl w-full max-w-2xl">
                 <div className="card-body">
-                    <h2 className="card-title justify-center text-2xl font-bold mb-6">Complete Your Profile</h2>
+                    <div className="flex justify-between items-center mb-2">
+                        <h2 className="card-title text-2xl font-bold">Complete Your Profile</h2>
+                        <button onClick={logout} className="btn btn-sm btn-ghost text-error">
+                            Logout
+                        </button>
+                    </div>
                     <p className="text-center text-gray-500 mb-6">
                         Before we proceed, we need your delivery details to serve you better.
                     </p>
