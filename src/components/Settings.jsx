@@ -1815,11 +1815,83 @@ const FirebaseSettings = ({ settings = {}, onSave }) => {
         vapidKey: settings.vapidKey || "",
         enabled: settings.enabled ?? false,
     });
+    
+    // Testing state
+    const [testMobile, setTestMobile] = useState("");
+    const [testing, setTesting] = useState(false);
+    const recaptchaRef = React.useRef(null);
+    const recaptchaWidgetRef = React.useRef(null);
 
     const handleSave = () => {
         const cleanForm = { ...form };
         if (!cleanForm.privateKey || cleanForm.privateKey === "••••••••") delete cleanForm.privateKey;
         onSave(cleanForm);
+    };
+
+    const handleTestFirebaseOTP = async () => {
+        if (!testMobile || testMobile.length < 10) {
+            return alert("Enter a valid 10-digit mobile number");
+        }
+        
+        try {
+            setTesting(true);
+            
+            // Dynamic import to avoid loading Firebase if not used
+            const { initializeFirebase, getFirebaseAuth, RecaptchaVerifier, signInWithPhoneNumber } = await import("../lib/firebase");
+            
+            // Initialize with the current form data (so we can test before saving)
+            const testConfig = {
+                apiKey: form.apiKey === "••••••••" ? settings.apiKey : form.apiKey,
+                authDomain: form.authDomain,
+                projectId: form.projectId,
+                storageBucket: form.storageBucket,
+                messagingSenderId: form.messagingSenderId,
+                appId: form.appId,
+            };
+            
+            initializeFirebase(testConfig);
+            const auth = getFirebaseAuth();
+            
+            if (!auth) {
+                throw new Error("Failed to initialize Firebase Auth with provided config");
+            }
+
+            // Setup recaptcha if not already setup
+            if (!recaptchaWidgetRef.current) {
+                const verifier = new RecaptchaVerifier(auth, "test-recaptcha-container", {
+                    size: "invisible",
+                    callback: () => {},
+                });
+                recaptchaRef.current = verifier;
+                recaptchaWidgetRef.current = verifier;
+            }
+
+            // Send OTP
+            const phoneNumber = `+91${testMobile}`;
+            console.log("Attempting Firebase test OTP to:", phoneNumber);
+            alert(`Sending OTP to ${phoneNumber}... Please wait.`);
+            
+            const result = await signInWithPhoneNumber(auth, phoneNumber, recaptchaRef.current);
+            console.log("Firebase SMS Sent Result:", result);
+            alert("✅ SUCCESS! Firebase OTP sent successfully to " + testMobile);
+            
+        } catch (error) {
+            console.error("Firebase Test Error:", error);
+            alert(`❌ FAILED: ${error.message}\n\nCheck console for details.`);
+            
+            // Clear recaptcha on error so we can retry cleanly
+            if (recaptchaRef.current) {
+                try {
+                    recaptchaRef.current.clear();
+                } catch (e) { }
+                recaptchaRef.current = null;
+                recaptchaWidgetRef.current = null;
+                const container = document.getElementById("test-recaptcha-container");
+                if (container) container.innerHTML = "";
+            }
+        } finally {
+            setTesting(false);
+        }
     };
 
     return (
@@ -1882,6 +1954,39 @@ const FirebaseSettings = ({ settings = {}, onSave }) => {
                 <div className="form-control md:col-span-2">
                     <label className="label">VAPID Key (Web Push)</label>
                     <input type="text" className="input input-bordered" value={form.vapidKey} onChange={(e) => setForm({ ...form, vapidKey: e.target.value })} />
+                </div>
+            </div>
+            
+            {/* Firebase OTP Diagnostic Tester */}
+            <div className="card bg-gray-50 border border-gray-200 mt-6">
+                <div className="card-body p-4">
+                    <h3 className="font-bold flex items-center gap-2">
+                        <span>🧪</span> Diagnostic: Test Firebase OTP Auth
+                    </h3>
+                    <p className="text-sm text-gray-600 mb-2">
+                        Use this internal tool to test if Firebase SMS is being sent properly with the current configuration. It will show the exact error if it fails.
+                    </p>
+                    <div className="flex gap-2 items-end">
+                        <div className="form-control flex-1">
+                            <label className="label"><span className="label-text">Mobile Number (without +91)</span></label>
+                            <input 
+                                type="text" 
+                                className="input input-bordered w-full" 
+                                placeholder="Enter 10 digit number" 
+                                value={testMobile}
+                                onChange={(e) => setTestMobile(e.target.value)}
+                            />
+                        </div>
+                        <button 
+                            className="btn btn-secondary" 
+                            onClick={handleTestFirebaseOTP}
+                            disabled={testing}
+                        >
+                            {testing ? "Testing..." : "Send Test OTP"}
+                        </button>
+                    </div>
+                    {/* Invisible ReCAPTCHA container for tests */}
+                    <div id="test-recaptcha-container"></div>
                 </div>
             </div>
 
