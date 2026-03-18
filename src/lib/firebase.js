@@ -1,4 +1,4 @@
-import { initializeApp } from "firebase/app";
+import { initializeApp, getApps } from "firebase/app";
 import { getMessaging, getToken, onMessage } from "firebase/messaging";
 import { getAuth, RecaptchaVerifier, signInWithPhoneNumber } from "firebase/auth";
 
@@ -11,21 +11,35 @@ const firebaseConfig = {
     appId: import.meta.env.VITE_FIREBASE_APP_ID
 };
 
-// Initialize Firebase safely
-let app, auth, messaging;
+// Shared state object — ensures references stay current after re-init
+const firebaseState = {
+    app: null,
+    auth: null,
+    messaging: null,
+};
 
 export const initializeFirebase = (config = null) => {
     const finalConfig = config || firebaseConfig;
     if (finalConfig.apiKey) {
         try {
-            // Check if already initialized to prevent errors
-            if (app) return { app, auth, messaging };
+            // If already initialized with a valid app, reuse it
+            if (getApps().length > 0) {
+                firebaseState.app = getApps()[0];
+                firebaseState.auth = getAuth(firebaseState.app);
+                try {
+                    firebaseState.messaging = typeof window !== 'undefined' ? getMessaging(firebaseState.app) : null;
+                } catch { /* messaging may not be available */ }
+                console.log("Firebase reused existing app");
+                return firebaseState;
+            }
 
-            app = initializeApp(finalConfig);
-            auth = getAuth(app);
-            messaging = typeof window !== 'undefined' ? getMessaging(app) : null;
+            firebaseState.app = initializeApp(finalConfig);
+            firebaseState.auth = getAuth(firebaseState.app);
+            try {
+                firebaseState.messaging = typeof window !== 'undefined' ? getMessaging(firebaseState.app) : null;
+            } catch { /* messaging may not be available */ }
             console.log("Firebase initialized successfully");
-            return { app, auth, messaging };
+            return firebaseState;
         } catch (error) {
             console.error("Firebase initialization failed:", error);
         }
@@ -38,13 +52,18 @@ export const initializeFirebase = (config = null) => {
 // Auto-initialize if env vars are present
 initializeFirebase();
 
-export { app, auth, messaging, RecaptchaVerifier, signInWithPhoneNumber };
+// Export getters so consumers always get the latest reference
+export const getFirebaseAuth = () => firebaseState.auth;
+export const getFirebaseApp = () => firebaseState.app;
+export const getFirebaseMessaging = () => firebaseState.messaging;
 
-
+// Also export direct references for backward compatibility
+export { RecaptchaVerifier, signInWithPhoneNumber, firebaseState };
 
 export const requestForToken = () => {
-    if (!messaging) return Promise.resolve(null);
-    return getToken(messaging, { vapidKey: import.meta.env.VITE_FIREBASE_VAPID_KEY })
+    const msg = firebaseState.messaging;
+    if (!msg) return Promise.resolve(null);
+    return getToken(msg, { vapidKey: import.meta.env.VITE_FIREBASE_VAPID_KEY })
         .then((currentToken) => {
             if (currentToken) {
                 console.log('FCM Token:', currentToken);
@@ -62,8 +81,9 @@ export const requestForToken = () => {
 
 export const onMessageListener = () =>
     new Promise((resolve) => {
-        if (!messaging) return resolve(null);
-        onMessage(messaging, (payload) => {
+        const msg = firebaseState.messaging;
+        if (!msg) return resolve(null);
+        onMessage(msg, (payload) => {
             console.log("OnMessage:", payload);
             resolve(payload);
         });

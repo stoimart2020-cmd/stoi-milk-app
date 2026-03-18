@@ -5,7 +5,7 @@ import { axiosInstance } from "../lib/axios";
 import { loginWithPin, setPin } from "../lib/api/auth";
 import toast from "react-hot-toast";
 import {
-  auth,
+  getFirebaseAuth,
   RecaptchaVerifier,
   signInWithPhoneNumber,
   initializeFirebase,
@@ -47,12 +47,13 @@ export const Login = () => {
 
   // Setup reCAPTCHA when Firebase OTP flow starts
   const setupRecaptcha = () => {
+    const auth = getFirebaseAuth();
     if (!auth) {
       throw new Error("Firebase not initialized");
     }
     if (recaptchaWidgetRef.current) return; // already set up
 
-    const verifier = new RecaptchaVerifier(auth, "recaptcha-container", {
+    const verifier = new RecaptchaVerifier(getFirebaseAuth(), "recaptcha-container", {
       size: "invisible",
       callback: () => {},
     });
@@ -88,7 +89,7 @@ export const Login = () => {
       }
 
       // Need OTP — use Firebase if enabled, else backend SMS
-      if (useFirebase && auth) {
+      if (useFirebase && getFirebaseAuth()) {
         await sendFirebaseOtp();
       } else {
         await sendBackendOtp();
@@ -106,7 +107,7 @@ export const Login = () => {
       setupRecaptcha();
       const phoneNumber = `+91${mobile}`; // Adjust country code if needed
       const result = await signInWithPhoneNumber(
-        auth,
+        getFirebaseAuth(),
         phoneNumber,
         recaptchaRef.current
       );
@@ -230,7 +231,7 @@ export const Login = () => {
     setIsResettingPin(true);
     clearRecaptcha();
     try {
-      if (useFirebase && auth) {
+      if (useFirebase && getFirebaseAuth()) {
         await sendFirebaseOtp();
       } else {
         await sendBackendOtp();
@@ -248,7 +249,7 @@ export const Login = () => {
     clearRecaptcha();
     setLoading(true);
     try {
-      if (useFirebase && auth) {
+      if (useFirebase && getFirebaseAuth()) {
         await sendFirebaseOtp();
       } else {
         await sendBackendOtp();
