@@ -165,10 +165,11 @@ const settingsSchema = new mongoose.Schema(
 
         // WhatsApp Settings
         whatsapp: {
-            provider: { type: String, enum: ["twilio", "wati", "gupshup"], default: "twilio" },
+            provider: { type: String, enum: ["twilio", "wati", "gupshup", "msg91"], default: "msg91" },
             apiKey: { type: String, default: "" },
             phoneNumberId: { type: String, default: "" },
             businessAccountId: { type: String, default: "" },
+            integratedNumber: { type: String, default: "" }, // MSG91 integrated WhatsApp number
             enabled: { type: Boolean, default: false },
             templates: {
                 collection: { type: String, default: "" },

@@ -112,17 +112,95 @@ exports.sendSMS = async (mobile, message) => {
     }
 };
 
-exports.sendWhatsApp = async (mobile, message) => {
+exports.sendWhatsApp = async (mobile, message, templateData = {}) => {
     try {
         const settings = await Settings.getSettings();
-        const provider = settings.whatsapp?.provider || "twilio";
+        
+        if (!settings.whatsapp?.enabled) {
+            console.log("[WHATSAPP DISABLED] Would send:", message);
+            return false;
+        }
+
+        const provider = settings.whatsapp?.provider || "msg91";
+        const apiKey = settings.whatsapp?.apiKey || settings.smsGateway?.apiKey; // Reuse SMS authkey if WhatsApp key not set
 
         console.log(`[WHATSAPP - ${provider.toUpperCase()}] To: ${mobile}, Msg: ${message}`);
 
-        // TODO: Implement actual API call based on provider and apiKey
-        // const apiKey = settings.whatsapp?.apiKey;
+        if (provider === "msg91" && apiKey) {
+            const axios = require("axios");
+            const integratedNumber = settings.whatsapp?.integratedNumber || "";
+            const countryCode = mobile.startsWith("91") ? "" : "91";
+            const num = `${countryCode}${mobile}`.replace(/\D/g, "");
 
-        return true;
+            // If a template name is provided (e.g., "welcome_template"), use template mode
+            // Otherwise, send a plain text message using MSG91's API
+            const templateName = templateData.templateName;
+
+            let payload;
+
+            if (templateName) {
+                // Template-based WhatsApp message (approved templates only)
+                const components = [];
+                
+                // Build body parameters from templateData.params
+                if (templateData.params && templateData.params.length > 0) {
+                    components.push({
+                        type: "body",
+                        parameters: templateData.params.map(p => ({
+                            type: "text",
+                            text: String(p)
+                        }))
+                    });
+                }
+
+                payload = {
+                    integrated_number: integratedNumber,
+                    content_type: "template",
+                    payload: {
+                        to: num,
+                        type: "template",
+                        template: {
+                            name: templateName,
+                            language: { code: "en", policy: "deterministic" },
+                            components: components
+                        }
+                    }
+                };
+            } else {
+                // Plain text WhatsApp message (may not work on all MSG91 accounts — requires session)
+                payload = {
+                    integrated_number: integratedNumber,
+                    content_type: "text",
+                    payload: {
+                        to: num,
+                        type: "text",
+                        text: { body: message }
+                    }
+                };
+            }
+
+            try {
+                const response = await axios.post(
+                    "https://control.msg91.com/api/v5/whatsapp/whatsapp-outbound-message/bulk/",
+                    payload,
+                    {
+                        headers: {
+                            "Content-Type": "application/json",
+                            "authkey": apiKey
+                        }
+                    }
+                );
+                console.log("[MSG91 WhatsApp Response]:", response.data);
+                return true;
+            } catch (waErr) {
+                console.error("[MSG91 WhatsApp Error]:", waErr?.response?.data || waErr.message);
+                return false;
+            }
+        }
+
+        // Other providers (Twilio, WATI, Gupshup) — TODO
+        console.log(`[WHATSAPP - ${provider}] Provider not yet implemented`);
+        return false;
     } catch (error) {
         console.error("WhatsApp Error:", error.message);
         return false;

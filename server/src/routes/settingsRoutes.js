@@ -8,6 +8,7 @@ const {
     testPaymentGateway,
     testEmail,
     sendEmail,
+    testWhatsApp,
 } = require("../controllers/settingsController");
 const { protect } = require("../middleware/auth");
 
@@ -21,5 +22,6 @@ router.post("/test-sms", protect, testSmsGateway);
 router.post("/test-payment", protect, testPaymentGateway);
 router.post("/test-email", protect, testEmail);
 router.post("/send-email", protect, sendEmail);
+router.post("/test-whatsapp", protect, testWhatsApp);
 
 module.exports = router;

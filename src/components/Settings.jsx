@@ -1305,10 +1305,11 @@ const ManualEmailSettings = ({ settings }) => {
 const WhatsAppSettings = ({ settings = {}, onSave }) => {
     const [form, setForm] = useState({
         enabled: settings.enabled ?? false,
-        provider: settings.provider || "twilio",
+        provider: settings.provider || "msg91",
         apiKey: "",
         phoneNumberId: settings.phoneNumberId || "",
         businessAccountId: settings.businessAccountId || "",
+        integratedNumber: settings.integratedNumber || "",
         templates: {
             collection: settings.templates?.collection || "",
             vendorPayment: settings.templates?.vendorPayment || settings.templates?.payment || "",
@@ -1332,12 +1333,12 @@ const WhatsAppSettings = ({ settings = {}, onSave }) => {
 
     return (
         <div className="space-y-6">
-            <h2 className="text-xl font-bold">💬 WhatsApp Business</h2>
+            <h2 className="text-xl font-bold">💬 WhatsApp Business (MSG91)</h2>
 
             <div className="flex items-center justify-between p-4 bg-base-100 rounded-lg border">
                 <div>
                     <h3 className="font-semibold">Enable WhatsApp</h3>
-                    <p className="text-sm text-gray-500">Send automated WhatsApp notifications</p>
+                    <p className="text-sm text-gray-500">Send automated WhatsApp notifications via MSG91</p>
                 </div>
                 <input type="checkbox" className="toggle toggle-success" checked={form.enabled} onChange={(e) => setForm({ ...form, enabled: e.target.checked })} />
             </div>
@@ -1347,6 +1348,7 @@ const WhatsAppSettings = ({ settings = {}, onSave }) => {
                 <div>
                     <label className="label">Provider</label>
                     <select className="select select-bordered w-full" value={form.provider} onChange={(e) => setForm({ ...form, provider: e.target.value })}>
+                        <option value="msg91">MSG91</option>
                         <option value="twilio">Twilio</option>
                         <option value="wati">WATI</option>
                         <option value="gupshup">Gupshup</option>
@@ -1354,81 +1356,105 @@ const WhatsAppSettings = ({ settings = {}, onSave }) => {
                 </div>
 
                 <div>
-                    <label className="label">API Key / Auth Token</label>
-                    <input type="password" className="input input-bordered w-full" placeholder={settings.apiKey ? "••••••••" : "Enter API Key"} value={form.apiKey} onChange={(e) => setForm({ ...form, apiKey: e.target.value })} />
+                    <label className="label">API Key / Auth Key</label>
+                    <input type="password" className="input input-bordered w-full" placeholder={settings.apiKey ? "••••••••" : "Enter API Key (or leave blank to use SMS key)"} value={form.apiKey} onChange={(e) => setForm({ ...form, apiKey: e.target.value })} />
+                    <div className="text-xs text-gray-400 mt-1">Leave blank to reuse the SMS Gateway Auth Key</div>
                 </div>
 
-                <div>
-                    <label className="label">Phone Number ID</label>
-                    <input type="text" className="input input-bordered w-full" value={form.phoneNumberId} onChange={(e) => setForm({ ...form, phoneNumberId: e.target.value })} />
+                {form.provider === "msg91" && (
+                    <div className="md:col-span-2">
+                        <label className="label font-semibold">MSG91 Integrated WhatsApp Number</label>
+                        <input type="text" className="input input-bordered w-full" placeholder="e.g., 919876543210" value={form.integratedNumber} onChange={(e) => setForm({ ...form, integratedNumber: e.target.value })} />
+                        <div className="text-xs text-gray-400 mt-1">The WhatsApp number you integrated in your MSG91 panel (with country code, no +)</div>
+                    </div>
+                )}
+
+                {form.provider !== "msg91" && (
+                    <>
+                        <div>
+                            <label className="label">Phone Number ID</label>
+                            <input type="text" className="input input-bordered w-full" value={form.phoneNumberId} onChange={(e) => setForm({ ...form, phoneNumberId: e.target.value })} />
+                        </div>
+                        <div>
+                            <label className="label">Business Account ID</label>
+                            <input type="text" className="input input-bordered w-full" value={form.businessAccountId} onChange={(e) => setForm({ ...form, businessAccountId: e.target.value })} />
+                        </div>
+                    </>
+                )}
+
+                {/* Templates */}
+                <div className="md:col-span-2 divider font-semibold">WhatsApp Templates (MSG91 Approved Names)</div>
+                <div className="md:col-span-2 bg-blue-50 border border-blue-200 rounded-lg p-3 text-sm text-blue-700">
+                    💡 <strong>Tip:</strong> Enter the exact approved template name from your MSG91 panel. Variables will be auto-mapped. If left blank, a plain text message is sent (requires an active WhatsApp session).
                 </div>
 
-                <div>
-                    <label className="label">Business Account ID</label>
-                    <input type="text" className="input input-bordered w-full" value={form.businessAccountId} onChange={(e) => setForm({ ...form, businessAccountId: e.target.value })} />
-                </div>
-
-                {/* Templates Section - Vendor */}
-                <div className="md:col-span-2 divider font-semibold">Vendor Notifications</div>
-
+                <div className="md:col-span-2 divider font-semibold text-sm">Vendor Notifications</div>
                 <div className="md:col-span-2 card bg-base-50 p-4 border">
                     <label className="label font-bold">Milk Collection (Daily)</label>
-                    <textarea className="textarea textarea-bordered w-full h-20 font-mono text-sm"
-                        value={form.templates.collection} onChange={(e) => updateTemplate('collection', e.target.value)}
-                        placeholder="Template body or Template Name (if using logic)" />
-                    <div className="text-xs text-gray-500 mt-1">Vars: {`{vendor}, {qty}, {shift}, {date}, {rate}, {amount}`}</div>
+                    <input type="text" className="input input-bordered w-full" placeholder="Template name, e.g.: milk_collection_daily"
+                        value={form.templates.collection} onChange={(e) => updateTemplate('collection', e.target.value)} />
+                    <div className="text-xs text-gray-500 mt-1">Params: vendor, qty, shift, date, rate, amount</div>
                 </div>
-
                 <div className="md:col-span-2 card bg-base-50 p-4 border">
-                    <label className="label font-bold">Vendor Payment (Weekly/Monthly)</label>
-                    <textarea className="textarea textarea-bordered w-full h-20 font-mono text-sm"
+                    <label className="label font-bold">Vendor Payment</label>
+                    <input type="text" className="input input-bordered w-full" placeholder="Template name, e.g.: vendor_payment"
                         value={form.templates.vendorPayment} onChange={(e) => updateTemplate('vendorPayment', e.target.value)} />
-                    <div className="text-xs text-gray-500 mt-1">Vars: {`{vendor}, {amount}, {date}`}</div>
+                    <div className="text-xs text-gray-500 mt-1">Params: vendor, amount, date</div>
                 </div>
 
-                {/* Templates Section - Customer */}
-                <div className="md:col-span-2 divider font-semibold">Customer Notifications</div>
-
+                <div className="md:col-span-2 divider font-semibold text-sm">Customer Notifications</div>
                 <div className="card bg-base-50 p-4 border">
-                    <label className="label font-bold">OTP Login / Signup</label>
-                    <textarea className="textarea textarea-bordered w-full h-20 font-mono text-sm"
-                        value={form.templates.otp} onChange={(e) => updateTemplate('otp', e.target.value)} />
-                    <div className="text-xs text-gray-500 mt-1">Vars: {`{otp}`}</div>
-                </div>
-
-                <div className="card bg-base-50 p-4 border">
-                    <label className="label font-bold">Welcome Message</label>
-                    <textarea className="textarea textarea-bordered w-full h-20 font-mono text-sm"
+                    <label className="label font-bold">Welcome</label>
+                    <input type="text" className="input input-bordered w-full" placeholder="Template name"
                         value={form.templates.welcome} onChange={(e) => updateTemplate('welcome', e.target.value)} />
-                    <div className="text-xs text-gray-500 mt-1">Vars: {`{name}`}</div>
+                    <div className="text-xs text-gray-500 mt-1">Params: name</div>
                 </div>
-
                 <div className="card bg-base-50 p-4 border">
                     <label className="label font-bold">Subscription Started</label>
-                    <textarea className="textarea textarea-bordered w-full h-20 font-mono text-sm"
+                    <input type="text" className="input input-bordered w-full" placeholder="Template name"
                         value={form.templates.subscription} onChange={(e) => updateTemplate('subscription', e.target.value)} />
-                    <div className="text-xs text-gray-500 mt-1">Vars: {`{name}, {product}, {qty}, {date}`}</div>
+                    <div className="text-xs text-gray-500 mt-1">Params: name, product, qty, date</div>
                 </div>
-
                 <div className="card bg-base-50 p-4 border">
                     <label className="label font-bold">Payment Received</label>
-                    <textarea className="textarea textarea-bordered w-full h-20 font-mono text-sm"
+                    <input type="text" className="input input-bordered w-full" placeholder="Template name"
                         value={form.templates.customerPayment} onChange={(e) => updateTemplate('customerPayment', e.target.value)} />
-                    <div className="text-xs text-gray-500 mt-1">Vars: {`{name}, {amount}, {txnId}`}</div>
+                    <div className="text-xs text-gray-500 mt-1">Params: name, amount, txnId</div>
                 </div>
-
-                <div className="md:col-span-2 card bg-base-50 p-4 border">
+                <div className="card bg-base-50 p-4 border">
                     <label className="label font-bold">Order Delivered</label>
-                    <textarea className="textarea textarea-bordered w-full h-20 font-mono text-sm"
+                    <input type="text" className="input input-bordered w-full" placeholder="Template name"
                         value={form.templates.delivery} onChange={(e) => updateTemplate('delivery', e.target.value)} />
-                    <div className="text-xs text-gray-500 mt-1">Vars: {`{name}, {time}, {items}`}</div>
+                    <div className="text-xs text-gray-500 mt-1">Params: name, time, items</div>
                 </div>
+            </div>
 
+            {/* Test WhatsApp */}
+            <div className={`card bg-gray-50 border border-gray-200 ${!form.enabled ? 'opacity-50 pointer-events-none' : ''}`}>
+                <div className="card-body p-4">
+                    <h3 className="font-bold flex items-center gap-2">🧪 Diagnostic: Test WhatsApp</h3>
+                    <p className="text-sm text-gray-600 mb-2">Send a test WhatsApp message via MSG91 to verify your integration.</p>
+                    <div className="flex gap-2 items-end">
+                        <div className="form-control flex-1">
+                            <label className="label"><span className="label-text">Mobile Number</span></label>
+                            <input type="text" id="testWhatsappMobile" className="input input-bordered w-full" placeholder="10 digit mobile number" />
+                        </div>
+                        <button className="btn btn-secondary" onClick={async () => {
+                            const mob = document.getElementById("testWhatsappMobile").value;
+                            if (!mob || mob.length < 10) return alert("Enter valid 10-digit number");
+                            try {
+                                const res = await axiosInstance.post("/api/settings/test-whatsapp", { mobile: mob });
+                                alert("✅ " + res.data.message);
+                            } catch (error) {
+                                alert("❌ Failed: " + (error.response?.data?.message || "Unknown error"));
+                            }
+                        }}>Send Test</button>
+                    </div>
+                </div>
             </div>
 
             <div className="flex gap-2 pt-4">
-                <button className="btn btn-primary" onClick={handleSave}>💾 Save All Templates</button>
-                <button className="btn btn-outline" onClick={() => alert("Test WhatsApp triggered!")}>📤 Send Test Msg</button>
+                <button className="btn btn-primary w-full" onClick={handleSave}>💾 Save WhatsApp Settings</button>
             </div>
         </div>
     );

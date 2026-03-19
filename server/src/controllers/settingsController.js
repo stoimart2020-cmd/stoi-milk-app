@@ -248,3 +248,26 @@ exports.testEmail = async (req, res) => {
         res.status(500).json({ success: false, message: error.message });
     }
 };
+
+exports.testWhatsApp = async (req, res) => {
+    try {
+        const { mobile } = req.body;
+        const settings = await Settings.getSettings();
+
+        if (!settings.whatsapp?.enabled) {
+            return res.status(400).json({ success: false, message: "WhatsApp is not enabled in settings" });
+        }
+
+        console.log(`[Diagnostic] Test WhatsApp to ${mobile} using ${settings.whatsapp.provider}`);
+
+        const { sendWhatsApp } = require("../utils/notification");
+        const testMessage = `Hello! This is a test message from ${settings.site?.siteName || "STOI Milk"}. Your WhatsApp integration is working correctly! 🎉`;
+
+        await sendWhatsApp(mobile, testMessage);
+
+        res.status(200).json({ success: true, message: `Test WhatsApp sent to ${mobile} via ${(settings.whatsapp.provider || "msg91").toUpperCase()}` });
+    } catch (error) {
+        console.error("Test WhatsApp Error:", error);
+        res.status(500).json({ success: false, message: error.message });
+    }
+};
