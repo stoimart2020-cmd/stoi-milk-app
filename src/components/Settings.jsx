@@ -1857,13 +1857,15 @@ const FirebaseSettings = ({ settings = {}, onSave }) => {
             }
 
             // Setup recaptcha if not already setup
-            if (!recaptchaWidgetRef.current) {
+            if (!window.testRecaptchaVerifier) {
                 const verifier = new RecaptchaVerifier(auth, "test-recaptcha-container", {
                     size: "invisible",
                     callback: () => {},
                 });
+                window.testRecaptchaVerifier = verifier;
                 recaptchaRef.current = verifier;
-                recaptchaWidgetRef.current = verifier;
+            } else {
+                recaptchaRef.current = window.testRecaptchaVerifier;
             }
 
             // Send OTP
@@ -1880,12 +1882,13 @@ const FirebaseSettings = ({ settings = {}, onSave }) => {
             alert(`❌ FAILED: ${error.message}\n\nCheck console for details.`);
             
             // Clear recaptcha on error so we can retry cleanly
-            if (recaptchaRef.current) {
+            if (window.testRecaptchaVerifier) {
                 try {
-                    recaptchaRef.current.clear();
+                    window.testRecaptchaVerifier.clear();
                 } catch (e) { }
+                window.testRecaptchaVerifier = null;
                 recaptchaRef.current = null;
-                recaptchaWidgetRef.current = null;
+                
                 const container = document.getElementById("test-recaptcha-container");
                 if (container) container.innerHTML = "";
             }
