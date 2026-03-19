@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useRef } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { queryClient } from "../lib/queryClient";
 import { axiosInstance } from "../lib/axios";
@@ -1819,8 +1819,8 @@ const FirebaseSettings = ({ settings = {}, onSave }) => {
     // Testing state
     const [testMobile, setTestMobile] = useState("");
     const [testing, setTesting] = useState(false);
-    const recaptchaRef = React.useRef(null);
-    const recaptchaWidgetRef = React.useRef(null);
+    const recaptchaRef = useRef(null);
+    const recaptchaWidgetRef = useRef(null);
 
     const handleSave = () => {
         const cleanForm = { ...form };
