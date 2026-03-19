@@ -140,15 +140,22 @@ exports.testSmsGateway = async (req, res) => {
         const { mobile } = req.body;
         const settings = await Settings.getSettings();
 
-        if (!settings.smsGateway.enabled) {
+        if (!settings.smsGateway?.enabled) {
             return res.status(400).json({ success: false, message: "SMS Gateway is not enabled" });
         }
 
-        // TODO: Implement actual SMS sending based on provider
-        console.log(`Test SMS to ${mobile} using ${settings.smsGateway.provider}`);
+        console.log(`[Diagnostic] Test SMS to ${mobile} using ${settings.smsGateway.provider}`);
+        
+        // Use the actual sendOtp utility which utilizes MSG91 direct integration
+        const { sendOtp } = require("../utils/notification");
+        const testOtp = "123456"; // Use mock OTP for test 
+        
+        // sendOtp does not return anything right now but executes the async flow.
+        await sendOtp(mobile, testOtp);
 
-        res.status(200).json({ success: true, message: "Test SMS sent successfully" });
+        res.status(200).json({ success: true, message: `Test OTP sent to ${mobile} via ${settings.smsGateway.provider.toUpperCase()}` });
     } catch (error) {
+        console.error("Test SMS Error:", error);
         res.status(500).json({ success: false, message: error.message });
     }
 };

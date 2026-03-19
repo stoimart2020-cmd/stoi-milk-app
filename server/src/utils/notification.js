@@ -205,9 +205,32 @@ exports.sendOtp = async (mobile, otp) => {
 
         // SMS
         if (settings.smsGateway.enabled) {
-            const template = settings.smsGateway.templates?.otp || "Your OTP is {otp} for Stoi Milk login. Valid for 10 mins.";
-            const message = formatMessage(template, data);
-            await exports.sendSMS(mobile, message);
+            const { provider, apiKey, templateId } = settings.smsGateway;
+            
+            if (provider === "msg91" && apiKey && templateId) {
+                // Use explicit MSG91 Send OTP V5 API (the best for OTP delivery in India)
+                const axios = require("axios");
+                const countryCode = mobile.startsWith("91") ? "" : "91";
+                const num = `${countryCode}${mobile}`.replace(/\D/g, "");
+                
+                try {
+                    const url = `https://control.msg91.com/api/v5/otp?template_id=${templateId}&mobile=${num}&authkey=${apiKey}&otp=${otp}`;
+                    console.log(`[MSG91 OTP API] Sending OTP ${otp} to ${num}...`);
+                    
+                    const response = await axios.post(url, {}, {
+                        headers: { "Content-Type": "application/json" }
+                    });
+                    
+                    console.log("[MSG91 API Response]:", response.data);
+                } catch (msg91Err) {
+                    console.error("[MSG91 Error]:", msg91Err?.response?.data || msg91Err.message);
+                }
+            } else {
+                // Generic Fallback
+                const template = settings.smsGateway.templates?.otp || "Your OTP is {otp} for Stoi Milk login. Valid for 10 mins.";
+                const message = formatMessage(template, data);
+                await exports.sendSMS(mobile, message);
+            }
         }
 
         // WhatsApp

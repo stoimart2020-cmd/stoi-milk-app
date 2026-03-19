@@ -663,9 +663,46 @@ const SmsSettings = ({ settings = {}, onSave }) => {
                 </div>
             </div>
 
+            {/* OTP Diagnostic Tester */}
+            <div className={`card bg-gray-50 border border-gray-200 mt-6 ${!form.enabled ? 'opacity-50 pointer-events-none' : ''}`}>
+                <div className="card-body p-4">
+                    <h3 className="font-bold flex items-center gap-2">
+                        <span>🧪</span> Diagnostic: Test SMS / OTP Delivery
+                    </h3>
+                    <p className="text-sm text-gray-600 mb-2">
+                        Use this to test your MSG91 (or other provider) configuration. An actual test OTP will be sent.
+                    </p>
+                    <div className="flex gap-2 items-end">
+                        <div className="form-control flex-1">
+                            <label className="label"><span className="label-text">Mobile Number</span></label>
+                            <input 
+                                type="text" 
+                                id="testSmsMobile"
+                                className="input input-bordered w-full" 
+                                placeholder="Enter 10 digit number" 
+                            />
+                        </div>
+                        <button 
+                            className="btn btn-secondary" 
+                            onClick={async () => {
+                                const mobile = document.getElementById("testSmsMobile").value;
+                                if (!mobile || mobile.length < 10) return alert("Enter valid 10-digit number");
+                                try {
+                                    const res = await axiosInstance.post("/api/settings/test-sms", { mobile });
+                                    alert("✅ SMS request processed successfully. Check your phone.");
+                                } catch (error) {
+                                    alert(`❌ Failed: ${error.response?.data?.message || "Unknown error"}`);
+                                }
+                            }}
+                        >
+                            Send Test OTP
+                        </button>
+                    </div>
+                </div>
+            </div>
+
             <div className="flex gap-2 pt-4">
-                <button className="btn btn-primary" onClick={handleSave}>💾 Save All Templates</button>
-                <button className="btn btn-outline" onClick={() => alert("Test SMS to console triggered!")}>📤 Send Test SMS</button>
+                <button className="btn btn-primary w-full" onClick={handleSave}>💾 Save All SMS Settings</button>
             </div>
         </div>
     );
