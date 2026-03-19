@@ -43,6 +43,24 @@ export const Login = () => {
       }
     };
     checkFirebase();
+
+    // Load MSG91 Widget Script
+    const urls = [
+      'https://verify.msg91.com/otp-provider.js',
+      'https://verify.phone91.com/otp-provider.js'
+    ];
+    let i = 0;
+    function attemptLoad() {
+      const s = document.createElement('script');
+      s.src = urls[i];
+      s.async = true;
+      s.onerror = () => {
+        i++;
+        if (i < urls.length) attemptLoad();
+      };
+      document.head.appendChild(s);
+    }
+    attemptLoad();
   }, []);
 
   // Setup reCAPTCHA when Firebase OTP flow starts
@@ -125,6 +143,53 @@ export const Login = () => {
 
   // ── Backend SMS OTP Send ─────────────────────────────────────────────────
   const sendBackendOtp = async () => {
+    // If MSG91 widget is loaded, use it instead of our UI
+    if (typeof window.initSendOTP === 'function') {
+        const configuration = {
+            widgetId: "366373694366303330333938",
+            tokenAuth: "414391TcyVyznZd65e07cb5P1",
+            identifier: "91" + mobile.replace(/\D/g, ""),
+            button_1: "msg91-hidden-btn",
+            success: async (data) => {
+                console.log('MSG91 Widget Verified:', data);
+                try {
+                    setLoading(true);
+                    const res = await axiosInstance.post("/api/auth/msg91-verify", {
+                        mobile,
+                        token: data.message
+                    });
+                    
+                    if (res.data.success) {
+                        queryClient.invalidateQueries({ queryKey: ["user"] });
+                        const user = res.data.result;
+                        if (!user.pin || isResettingPin) {
+                            setStep("set_pin");
+                        } else {
+                            navigate("/dashboard", { replace: true });
+                        }
+                    }
+                } catch (e) {
+                    toast.error(e.response?.data?.message || "MSG91 verification failed on server");
+                } finally {
+                    setLoading(false);
+                }
+            },
+            failure: (error) => {
+                console.error('MSG91 Widget Error:', error);
+            }
+        };
+        
+        window.initSendOTP(configuration);
+        
+        // Trigger the widget click slightly later so MSG91 binds to it
+        setTimeout(() => {
+            const btn = document.getElementById("msg91-hidden-btn");
+            if (btn) btn.click();
+        }, 300);
+        return;
+    }
+
+    // Classic Fallback if MSG91 script didn't load
     const res = await axiosInstance.post("/api/auth/send-otp", { mobile });
     if (res.data.success) {
       setConfirmationResult(null); // signal: use backend verify
@@ -477,6 +542,7 @@ export const Login = () => {
           </a>
         </div>
       </div>
+      <button id="msg91-hidden-btn" className="hidden" aria-hidden="true" />
     </div>
   );
 };

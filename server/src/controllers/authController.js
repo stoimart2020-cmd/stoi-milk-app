@@ -137,6 +137,79 @@ exports.firebaseVerifyOtp = async (req, res) => {
     }
 };
 
+exports.msg91WidgetVerify = async (req, res) => {
+    try {
+        const { mobile, token } = req.body;
+        console.log(`Verifying MSG91 Widget Token for ${mobile}`);
+
+        const axios = require('axios');
+        const settings = await Settings.getSettings();
+        const authKey = settings.smsGateway?.apiKey || "414391TcyVyznZd65e07cb5P1";
+
+        // Verify with MSG91 API
+        const msg91Res = await axios.get(`https://control.msg91.com/api/v5/widget/verifyAccessToken?authkey=${authKey}&access_token=${token}`);
+        if (msg91Res.data.type !== "success") {
+            console.error("MSG91 Widget Verify Failed:", msg91Res.data);
+            return res.status(400).json({ success: false, message: "Invalid MSG91 Token" });
+        }
+
+        // Token is valid. Log the user in or auto-create account
+        let user = await Employee.findOne({ mobile });
+        if (!user) user = await User.findOne({ mobile });
+
+        const isNewUser = !user;
+
+        if (!user) {
+            user = await User.create({
+                mobile,
+                role: "CUSTOMER", // Default role
+                isActive: true,
+                isMobileVerified: true
+            });
+            console.log("New User created via MSG91 Widget Auth:", user._id);
+        } else {
+            user.isMobileVerified = true;
+            await user.save();
+        }
+
+        // Dual-role check for Employee
+        if (user instanceof Employee) {
+            const shadowUser = await User.findById(user._id);
+            if (!shadowUser) {
+                await User.create({
+                    _id: user._id,
+                    mobile: user.mobile,
+                    name: user.name,
+                    role: user.role,
+                    isActive: true
+                });
+            }
+        }
+
+        const sessionToken = generateToken(user._id);
+        res.cookie("token", sessionToken, { httpOnly: true, maxAge: 30 * 24 * 60 * 60 * 1000, path: "/" });
+
+        // Notify admins on new signup
+        if (isNewUser) {
+            const admins = await User.find({ role: { $in: ["SUPERADMIN", "ADMIN", "CUSTOMER_RELATIONS"] } });
+            for (const a of admins) {
+                await createNotification({
+                    recipient: a._id,
+                    title: "New Customer Signup (MSG91 Widget)",
+                    message: `New customer joined via MSG91 OTP: ${mobile}`,
+                    type: "success",
+                    link: "/administrator/dashboard/customers"
+                });
+            }
+        }
+
+        res.status(200).json({ success: true, result: user, token: sessionToken });
+    } catch (error) {
+        console.error("MSG91 Widget Verify Error:", error.message);
+        res.status(500).json({ success: false, message: "Server error during MSG91 validation" });
+    }
+};
+
 
 exports.verifyOtp = async (req, res) => {
     const mobile = String(req.body.mobile);
