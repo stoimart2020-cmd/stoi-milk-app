@@ -26,5 +26,6 @@ jobs:
             npm install
             npm run build
             cd server && npm install && cd ..
-            pm2 restart stoi-api --update-env || pm2 start server/src/index.js --name stoi-api
+            pm2 delete stoi-api 2>/dev/null || true
+            pm2 start src/index.js --name stoi-api --cwd /var/www/stoi-milk-app/server
             pm2 save
