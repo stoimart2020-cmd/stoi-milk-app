@@ -1,7 +1,7 @@
 import React from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { Bell } from 'lucide-react';
-import { axiosInstance as axios } from '../lib/axios';
+import { axiosInstance as axios } from '../shared/api/axios';
 
 export const NotificationBell = ({ userRole = 'CUSTOMER', iconColor = "text-gray-600", onNavigate }) => {
     const { data: unreadCount } = useQuery({

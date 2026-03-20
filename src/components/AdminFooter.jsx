@@ -1,5 +1,5 @@
 import React from 'react';
-import { useSiteSettings } from '../hook/useSiteSettings';
+import { useSiteSettings } from '../shared/hooks/useSiteSettings';
 import { Facebook, Twitter, Instagram, Youtube, Phone, Mail, MapPin } from 'lucide-react';
 
 export const AdminFooter = () => {

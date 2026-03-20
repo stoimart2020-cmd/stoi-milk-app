@@ -2,8 +2,8 @@ import { useNavigate } from "react-router-dom";
 import { useState, useRef, useEffect } from "react";
 import { LogOut, User, Search, X } from "lucide-react";
 import { NotificationBell } from "./NotificationBell";
-import { useFilters } from "../context/FilterContext";
-import { axiosInstance as axios } from "../lib/axios";
+import { useFilters } from "../shared/context/FilterContext";
+import { axiosInstance as axios } from "../shared/api/axios";
 
 export const AdminHeader = ({ user, isSidebarOpen, setIsSidebarOpen, handleLogout }) => {
     const navigate = useNavigate();
