@@ -37,6 +37,8 @@ app.use(cors({
             'http://stoimilk.com',
             'https://www.stoimilk.com',
             'http://www.stoimilk.com',
+            'https://hub.stoimilk.com',
+            'http://hub.stoimilk.com',
         ];
         
         const isAllowed = allowedOrigins.some(allowed => origin.startsWith(allowed));
