@@ -25,4 +25,5 @@ jobs:
             git pull
             npm install
             npm run build
+            cd server && npm install && cd ..
             pm2 restart all
