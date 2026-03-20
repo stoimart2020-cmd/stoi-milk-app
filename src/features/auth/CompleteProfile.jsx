@@ -102,7 +102,7 @@ export const CompleteProfile = () => {
         onSuccess: async () => {
             await queryClient.invalidateQueries({ queryKey: ["user"] });
             alert("Profile updated successfully! Welcome to the dashboard.");
-            navigate("/dashboard");
+            navigate("/dashboard", { replace: true });
         },
         onError: (err) => {
             alert(err.response?.data?.message || "Failed to update profile");

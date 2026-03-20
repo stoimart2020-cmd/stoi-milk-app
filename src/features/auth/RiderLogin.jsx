@@ -60,7 +60,7 @@ export const RiderLogin = () => {
           setStep("set_pin");
         } else {
           await queryClient.invalidateQueries({ queryKey: ["user"] });
-          navigate("/rider/dashboard");
+          navigate("/rider/dashboard", { replace: true });
         }
       }
     } catch (err) {
@@ -84,7 +84,7 @@ export const RiderLogin = () => {
             return;
         }
         await queryClient.invalidateQueries({ queryKey: ["user"] });
-        navigate("/rider/dashboard");
+        navigate("/rider/dashboard", { replace: true });
       }
     } catch (err) {
         // If PIN login fails, maybe it was a password (staff account)
@@ -92,7 +92,7 @@ export const RiderLogin = () => {
             const res = await axiosInstance.post("/api/auth/super-admin-login", { username: mobile, password: pin });
             if (res.data.success) {
                 await queryClient.invalidateQueries({ queryKey: ["user"] });
-                navigate("/rider/dashboard");
+                navigate("/rider/dashboard", { replace: true });
                 return;
             }
         } catch (passErr) {
@@ -113,7 +113,7 @@ export const RiderLogin = () => {
       if (res.data.success) {
         toast.success("PIN set successfully!");
         await queryClient.invalidateQueries({ queryKey: ["user"] });
-        navigate("/rider/dashboard");
+        navigate("/rider/dashboard", { replace: true });
       }
     } catch (err) {
       toast.error(err.response?.data?.message || "Failed to set PIN");

@@ -30,7 +30,7 @@ export const FieldSalesLogin = () => {
             if (user?.role === "FIELD_MARKETING" || user?.role === "ADMIN" || user?.role === "SUPERADMIN") {
                 toast.success("Login Successful");
                 await queryClient.invalidateQueries({ queryKey: ["user"] });
-                navigate("/fieldsales/dashboard");
+                navigate("/fieldsales/dashboard", { replace: true });
             } else {
                 toast.error("Access Denied: You are not a Field Sales officer");
             }

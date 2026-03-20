@@ -240,7 +240,7 @@ export const Login = () => {
       }
 
       await queryClient.invalidateQueries({ queryKey: ["user"] });
-      navigate("/dashboard");
+      navigate("/dashboard", { replace: true });
     } catch (err) {
       console.error("OTP verification error:", err);
       const msg =
@@ -263,7 +263,7 @@ export const Login = () => {
       const res = await loginWithPin({ mobile, pin });
       if (res.data.success) {
         await queryClient.invalidateQueries({ queryKey: ["user"] });
-        navigate("/dashboard");
+        navigate("/dashboard", { replace: true });
       }
     } catch (err) {
       toast.error(err.response?.data?.message || "Incorrect PIN");
@@ -282,7 +282,7 @@ export const Login = () => {
       if (res.data.success) {
         toast.success("PIN set successfully!");
         await queryClient.invalidateQueries({ queryKey: ["user"] });
-        navigate("/dashboard");
+        navigate("/dashboard", { replace: true });
       }
     } catch (err) {
       toast.error(err.response?.data?.message || "Failed to set PIN");

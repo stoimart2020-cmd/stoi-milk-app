@@ -25,7 +25,7 @@ export const AdministratorLogin = () => {
         toast.success("Secondary verification required.");
       } else {
         queryClient.invalidateQueries({ queryKey: ["currentAdmin"] });
-        navigate("/administrator/dashboard");
+        navigate("/administrator/dashboard", { replace: true });
       }
     },
     onError: (error) => {
@@ -37,7 +37,7 @@ export const AdministratorLogin = () => {
     mutationFn: verifyTwoStep,
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["currentAdmin"] });
-      navigate("/administrator/dashboard");
+      navigate("/administrator/dashboard", { replace: true });
       toast.success("Login successful");
     },
     onError: (error) => {

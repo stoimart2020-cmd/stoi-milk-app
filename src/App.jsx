@@ -339,19 +339,35 @@ function AppRoute() {
     },
     {
       path: "/rider/login",
-      element: <RiderLogin />,
+      element: currentAdmin?.user?.role === 'RIDER' ? (
+        <Navigate to="/rider/dashboard" />
+      ) : (
+        <RiderLogin />
+      ),
     },
     {
       path: "/rider/dashboard",
-      element: <RiderDashboard />,
+      element: currentAdmin?.user?.role === 'RIDER' ? (
+        <RiderDashboard />
+      ) : (
+        <Navigate to="/rider/login" />
+      ),
     },
     {
       path: "/fieldsales/login",
-      element: <FieldSalesLogin />,
+      element: currentAdmin?.user?.role === 'FIELD_OFFICER' ? (
+        <Navigate to="/fieldsales/dashboard" />
+      ) : (
+        <FieldSalesLogin />
+      ),
     },
     {
       path: "/fieldsales/dashboard",
-      element: <FieldSalesDashboard />,
+      element: currentAdmin?.user?.role === 'FIELD_OFFICER' ? (
+        <FieldSalesDashboard />
+      ) : (
+        <Navigate to="/fieldsales/login" />
+      ),
     },
     {
       path: "*",
