@@ -9,7 +9,8 @@ import {
     Truck, Package, CheckCircle2, Clock, XCircle, AlertTriangle,
     Users, MapPin, ChevronLeft, ChevronRight, ChevronDown, Send, UserPlus,
     IndianRupee, TrendingUp, Filter, RefreshCw, Eye, Bike, Zap, Warehouse,
-    MoreVertical, FileText, Edit3, ExternalLink, ArrowLeftRight, Phone
+    MoreVertical, FileText, Edit3, ExternalLink, ArrowLeftRight, Phone,
+    ClipboardList, CheckSquare
 } from "lucide-react";
 import React from "react";
 import { useFilters } from "../../shared/context/FilterContext";
@@ -62,6 +63,7 @@ const StatusBadge = ({ status }) => {
 export const DeliveryDashboard = () => {
     const [selectedDate, setSelectedDate] = useState(format(new Date(), "yyyy-MM-dd"));
     const [activeTab, setActiveTab] = useState("overview"); // overview | orders | riders
+    const [ordersSubTab, setOrdersSubTab] = useState("deliveries"); // deliveries | packing | recon | note | payment
     const [statusFilter, setStatusFilter] = useState("");
     const [riderFilter, setRiderFilter] = useState("");
     const [showUnassigned, setShowUnassigned] = useState(false);
@@ -71,7 +73,7 @@ export const DeliveryDashboard = () => {
     const [expandedRiders, setExpandedRiders] = useState({});
 
     const ObjectToggler = (setter, key) => {
-        setter(prev => ({ ...prev, [key]: prev[key] === false ? true : false })); // Default is true logic unless purely false
+        setter(prev => ({ ...prev, [key]: prev[key] === false ? true : false })); 
     };
 
     const { filters } = useFilters();
@@ -158,6 +160,26 @@ export const DeliveryDashboard = () => {
         });
         return hubs;
     }, [dash.riderStats]);
+
+    // --- Packing List Calculation ---
+    const packingList = useMemo(() => {
+        const pList = {};
+        orders.forEach(order => {
+            order.products?.forEach(p => {
+                const prod = p.product;
+                if (!prod) return;
+                const pId = prod._id || prod;
+                const pName = prod.name;
+                const pUnit = prod.unit || "";
+                const key = `${pId}_${pUnit}`;
+                if (!pList[key]) {
+                    pList[key] = { id: pId, name: pName, unit: pUnit, count: 0 };
+                }
+                pList[key].count += (p.quantity || 0);
+            });
+        });
+        return Object.values(pList).sort((a, b) => a.name.localeCompare(b.name));
+    }, [orders]);
 
     // --- Handlers ---
     const shiftDate = (delta) => {
@@ -590,22 +612,92 @@ export const DeliveryDashboard = () => {
                                         
                                         <div className="bg-white border-b border-gray-200">
                                             <div className="flex overflow-x-auto no-scrollbar">
-                                                <button className="px-6 py-3 font-semibold text-gray-600 border-b-[3px] border-[#1cc098] bg-white">Deliveries</button>
-                                                <button className="px-6 py-3 font-semibold text-[#1cc098] hover:text-[#177a66] transition-colors whitespace-nowrap">Delivery Recon</button>
-                                                <button className="px-6 py-3 font-semibold text-[#1cc098] hover:text-[#177a66] transition-colors whitespace-nowrap">Delivery Note</button>
-                                                <button className="px-6 py-3 font-semibold text-[#1cc098] hover:text-[#177a66] transition-colors whitespace-nowrap">Payment</button>
+                                                <button 
+                                                    onClick={() => setOrdersSubTab("deliveries")}
+                                                    className={`px-6 py-3 font-semibold transition-all ${ordersSubTab === "deliveries" ? 'text-gray-900 border-b-[3px] border-[#1cc098] bg-[#f9fafb]' : 'text-gray-500 hover:text-teal-600'}`}
+                                                >
+                                                    Deliveries
+                                                </button>
+                                                <button 
+                                                    onClick={() => setOrdersSubTab("packing")}
+                                                    className={`px-6 py-3 font-semibold transition-all whitespace-nowrap flex items-center gap-2 ${ordersSubTab === "packing" ? 'text-gray-900 border-b-[3px] border-[#1cc098] bg-[#f9fafb]' : 'text-gray-500 hover:text-teal-600'}`}
+                                                >
+                                                    <ClipboardList size={16}/> Packing List
+                                                </button>
+                                                <button className="px-6 py-3 font-semibold text-gray-500 hover:text-teal-600 transition-colors whitespace-nowrap">Delivery Recon</button>
+                                                <button className="px-6 py-3 font-semibold text-gray-500 hover:text-teal-600 transition-colors whitespace-nowrap">Delivery Note</button>
+                                                <button className="px-6 py-3 font-semibold text-gray-500 hover:text-teal-600 transition-colors whitespace-nowrap">Payment</button>
                                             </div>
                                         </div>
 
                                         <div className="p-4 flex-1">
                                             {ordersLoading && orders.length === 0 ? (
-                                                <div className="text-center py-20 text-gray-400">Loading deliveries...</div>
-                                            ) : orders.length === 0 ? (
-                                                <div className="text-center py-20 bg-white rounded-xl shadow-sm border border-gray-100 text-gray-400">
-                                                    <Package size={32} className="mx-auto mb-2 text-gray-300"/>
-                                                    No deliveries active
+                                                <div className="text-center py-20 text-gray-400">Loading details...</div>
+                                            ) : (ordersSubTab === "packing") ? (
+                                                /* --- PACKING LIST VIEW --- */
+                                                <div className="animate-in fade-in slide-in-from-bottom-2 duration-300">
+                                                    <div className="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden">
+                                                        <div className="bg-[#f0f9f6] px-6 py-4 border-b border-[#dcf4e8] flex justify-between items-center">
+                                                            <div className="flex items-center gap-3">
+                                                                <div className="bg-[#1cc098] text-white p-2 rounded-lg">
+                                                                    <Package size={20}/>
+                                                                </div>
+                                                                <div>
+                                                                    <h3 className="font-bold text-gray-800">Route Load sheet</h3>
+                                                                    <p className="text-xs text-teal-600 font-medium tracking-tight uppercase">Daily Packing Totals</p>
+                                                                </div>
+                                                            </div>
+                                                            <div className="text-right">
+                                                                <p className="text-xs text-gray-400 font-bold uppercase">Total Items</p>
+                                                                <p className="text-xl font-black text-[#177a66]">{packingList.reduce((sum, i) => sum + i.count, 0)}</p>
+                                                            </div>
+                                                        </div>
+                                                        
+                                                        <div className="p-0">
+                                                            <table className="w-full">
+                                                                <thead>
+                                                                    <tr className="bg-gray-50/50 text-[11px] font-bold text-gray-500 uppercase tracking-widest border-b border-gray-100">
+                                                                        <th className="px-8 py-4 text-left">Product / SKU</th>
+                                                                        <th className="px-6 py-4 text-right">Unit</th>
+                                                                        <th className="px-8 py-4 text-right">Total Quantity</th>
+                                                                    </tr>
+                                                                </thead>
+                                                                <tbody className="divide-y divide-gray-50">
+                                                                    {packingList.length === 0 ? (
+                                                                        <tr>
+                                                                            <td colSpan="3" className="px-8 py-12 text-center text-gray-400 italic">No products found for this route.</td>
+                                                                        </tr>
+                                                                    ) : packingList.map((item, idx) => (
+                                                                        <tr key={idx} className="hover:bg-teal-50/30 transition-colors group">
+                                                                            <td className="px-8 py-4 font-bold text-gray-800 text-[15px] group-hover:text-teal-700">
+                                                                                {item.name}
+                                                                            </td>
+                                                                            <td className="px-6 py-4 text-right">
+                                                                                <span className="bg-gray-100 px-2.5 py-1 rounded text-xs font-bold text-gray-500 uppercase">{item.unit || 'nos'}</span>
+                                                                            </td>
+                                                                            <td className="px-8 py-4 text-right">
+                                                                                <span className="text-xl font-black text-teal-600">{item.count}</span>
+                                                                                <span className="ml-1 text-[11px] text-teal-400 font-bold uppercase tracking-tight">{item.unit || 'nos'}</span>
+                                                                            </td>
+                                                                        </tr>
+                                                                    ))}
+                                                                </tbody>
+                                                            </table>
+                                                        </div>
+                                                        
+                                                        <div className="bg-gray-50 p-6 border-t border-gray-100 flex justify-between items-center">
+                                                            <div className="flex items-center gap-2 text-gray-400">
+                                                                <CheckSquare size={16}/>
+                                                                <span className="text-xs font-medium">Verified by Warehouse Manager</span>
+                                                            </div>
+                                                            <button className="bg-white border border-gray-200 text-gray-600 px-4 py-2 rounded-lg text-xs font-bold flex items-center gap-2 hover:bg-white hover:text-teal-600 hover:border-teal-200 transition-all shadow-sm">
+                                                                <FileText size={14}/> Print Load Sheet
+                                                            </button>
+                                                        </div>
+                                                    </div>
                                                 </div>
-                                            ) : (
+                                            ) : ordersSubTab === "deliveries" ? (
+                                                /* --- ORIGINAL DELIVERIES VIEW --- */
                                                 <div className="space-y-4">
                                                     {orders.map(order => (
                                                         <div key={order._id} className="bg-white rounded-xl border border-gray-200 shadow-sm overflow-hidden pb-4">
@@ -687,7 +779,7 @@ export const DeliveryDashboard = () => {
                                                         </div>
                                                     ))}
                                                 </div>
-                                            )}
+                                            ) : null}
                                         </div>
                                     </div>
                                 ) : (
