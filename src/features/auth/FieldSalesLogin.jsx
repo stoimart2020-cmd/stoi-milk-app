@@ -123,6 +123,22 @@ export const FieldSalesLogin = () => {
                         </button>
                     </form>
                 )}
+
+                <div className="flex justify-center gap-4 mt-6 pt-6 border-t border-gray-100">
+                    <button 
+                        onClick={() => navigate("/administrator/login")}
+                        className="text-xs text-teal-600 hover:text-teal-800 font-medium"
+                    >
+                        Admin Portal
+                    </button>
+                    <span className="text-gray-300 text-xs">|</span>
+                    <button 
+                        onClick={() => navigate("/rider/login")}
+                        className="text-xs text-teal-600 hover:text-teal-800 font-medium"
+                    >
+                        Rider Portal
+                    </button>
+                </div>
             </div>
             <p className="text-white/60 text-xs mt-6">STOI Milk • Field Sales Portal</p>
         </div>

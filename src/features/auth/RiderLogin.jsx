@@ -269,6 +269,21 @@ export const RiderLogin = () => {
             </button>
           </form>
         )}
+        <div className="flex justify-center gap-4 mt-6 pt-6 border-t border-gray-100">
+          <button 
+            onClick={() => navigate("/administrator/login")}
+            className="text-xs text-blue-500 hover:text-blue-700 font-medium"
+          >
+            Admin Portal
+          </button>
+          <span className="text-gray-300 text-xs">|</span>
+          <button 
+            onClick={() => navigate("/fieldsales/login")}
+            className="text-xs text-blue-500 hover:text-blue-700 font-medium"
+          >
+            Field Sales Portal
+          </button>
+        </div>
       </div>
     </div>
   );

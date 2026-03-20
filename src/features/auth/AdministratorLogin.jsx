@@ -157,14 +157,29 @@ export const AdministratorLogin = () => {
         )}
 
         <div className="mt-8 pt-6 border-t border-gray-100 flex flex-col gap-4">
-          {!requiresTwoStep && (
+          <div className="flex flex-col gap-2">
             <button 
               onClick={() => toast.error("Please contact System Administrator")}
               className="text-sm text-gray-500 hover:text-blue-600 w-full text-center hover:underline"
             >
               Forgot Password?
             </button>
-          )}
+            <div className="flex justify-center gap-4 mt-2">
+              <button 
+                onClick={() => navigate("/rider/login")}
+                className="text-xs text-blue-500 hover:text-blue-700 font-medium"
+              >
+                Rider Portal
+              </button>
+              <span className="text-gray-300 text-xs">|</span>
+              <button 
+                onClick={() => navigate("/fieldsales/login")}
+                className="text-xs text-blue-500 hover:text-blue-700 font-medium"
+              >
+                Field Sales Portal
+              </button>
+          </div>
+        </div>
           
           <a 
             href="https://stoimilk.com"

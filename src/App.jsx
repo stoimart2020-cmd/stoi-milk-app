@@ -169,7 +169,9 @@ function AppRoute() {
     },
     {
       path: "/administrator/login",
-      element: currentAdmin?.user?.role && currentAdmin.user.role !== 'RIDER' ? (
+      element: currentAdmin?.user?.role ? (
+        currentAdmin.user.role === 'RIDER' ? <Navigate to="/rider/dashboard" /> :
+        currentAdmin.user.role === 'FIELD_OFFICER' ? <Navigate to="/fieldsales/dashboard" /> :
         <Navigate to="/administrator/dashboard" />
       ) : (
         <AdministratorLogin />
@@ -177,14 +179,17 @@ function AppRoute() {
     },
     {
       path: "/administrator/dashboard",
-      element: currentAdmin?.user?.role && currentAdmin.user.role !== 'RIDER' ? (
+      element: currentAdmin?.user?.role && !['RIDER', 'FIELD_OFFICER'].includes(currentAdmin.user.role) ? (
         <ErrorBoundary>
           <AdministratorDashboard />
         </ErrorBoundary>
       ) : (
+        currentAdmin?.user?.role === 'RIDER' ? <Navigate to="/rider/dashboard" /> :
+        currentAdmin?.user?.role === 'FIELD_OFFICER' ? <Navigate to="/fieldsales/dashboard" /> :
         <Navigate to="/administrator/login" />
       ),
       children: [
+        // ... (rest of the children stay the same)
         {
           index: true,
           element: <DashboardHome />,
@@ -245,10 +250,6 @@ function AppRoute() {
         {
           path: "roles",
           element: <RoleManagement />,
-        },
-        {
-          path: "distributors",
-          element: <DistributorManagement />,
         },
         {
           path: "distributors",
@@ -341,6 +342,8 @@ function AppRoute() {
       path: "/rider/login",
       element: currentAdmin?.user?.role === 'RIDER' ? (
         <Navigate to="/rider/dashboard" />
+      ) : currentAdmin?.user?.role ? (
+        <Navigate to="/administrator/dashboard" />
       ) : (
         <RiderLogin />
       ),
@@ -357,6 +360,8 @@ function AppRoute() {
       path: "/fieldsales/login",
       element: currentAdmin?.user?.role === 'FIELD_OFFICER' ? (
         <Navigate to="/fieldsales/dashboard" />
+      ) : currentAdmin?.user?.role ? (
+        <Navigate to="/administrator/dashboard" />
       ) : (
         <FieldSalesLogin />
       ),
