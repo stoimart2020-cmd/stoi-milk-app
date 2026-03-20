@@ -446,22 +446,25 @@ export const RiderDashboard = () => {
     const greeting = getGreeting();
 
     const renderHome = () => (
-        <div className="p-4 space-y-6 pb-32 pt-6">
+        <div className="p-4 space-y-6 pb-32 pt-6 bg-[#f8fafc] min-h-screen">
             {/* Greeting & Controls Section */}
-            <div className="flex justify-between items-start mb-6 bg-gradient-to-r from-teal-500 to-emerald-600 p-6 rounded-3xl text-white shadow-lg">
-                <div>
-                    <h1 className="text-2xl font-bold">
+            <div className="flex justify-between items-start mb-6 bg-[radial-gradient(ellipse_at_top_right,_var(--tw-gradient-stops))] from-teal-400 via-emerald-500 to-teal-700 p-7 rounded-[28px] text-white shadow-[0_10px_25px_rgba(16,185,129,0.3)] relative overflow-hidden">
+                <div className="absolute -top-12 -right-10 w-32 h-32 bg-white/20 blur-3xl rounded-full pointer-events-none"></div>
+                <div className="absolute -bottom-10 -left-10 w-24 h-24 bg-teal-900/20 blur-2xl rounded-full pointer-events-none"></div>
+                
+                <div className="z-10">
+                    <h1 className="text-2xl font-black tracking-tight drop-shadow-sm">
                         {greeting.text}, {user?.data?.result?.name?.split(' ')[0] || "Rider"}! {greeting.icon}
                     </h1>
-                    <p className="text-teal-100 text-sm mt-1">Ready to deliver happiness today?</p>
+                    <p className="text-teal-50 text-sm mt-1.5 font-medium opacity-90">Ready to deliver happiness today?</p>
                 </div>
-                <div className="flex items-center gap-3">
-                    <button className="btn btn-ghost btn-circle btn-sm text-white hover:bg-white/20" onClick={() => refetch()}>
+                <div className="flex items-center gap-3 z-10">
+                    <button className="btn btn-ghost btn-circle btn-sm text-white hover:bg-white/20 backdrop-blur-md" onClick={() => refetch()}>
                         <RefreshCw size={18} className={isLoading ? "animate-spin" : ""} />
                     </button>
                     <div className="avatar placeholder" onClick={() => setActiveNav('profile')}>
-                        <div className="bg-white text-teal-600 rounded-full w-10 cursor-pointer shadow-md transition-all">
-                            <span className="text-sm font-bold">{user?.data?.result?.name?.charAt(0) || "R"}</span>
+                        <div className="bg-white text-teal-600 rounded-2xl w-11 cursor-pointer shadow-lg hover:scale-105 transition-transform border border-white/50">
+                            <span className="text-sm font-black">{user?.data?.result?.name?.charAt(0) || "R"}</span>
                         </div>
                     </div>
                 </div>
@@ -526,36 +529,38 @@ export const RiderDashboard = () => {
             {/* 2x2 Stats Grid */}
             <div className="grid grid-cols-2 gap-4">
                 <div
-                    className="bg-gradient-to-br from-orange-400 to-red-400 p-5 rounded-3xl shadow-md text-white flex flex-col justify-between h-36 cursor-pointer hover:shadow-lg transition-shadow"
+                    className="bg-gradient-to-b from-white to-red-50/40 border border-red-100 p-5 rounded-[24px] shadow-[0_8px_20px_rgba(0,0,0,0.03)] flex flex-col justify-between h-36 cursor-pointer hover:shadow-md hover:-translate-y-1 transition-all duration-300 group relative overflow-hidden"
                     onClick={() => {
                         setOrderFilter('active');
                         setActiveNav('deliveries');
                     }}
                 >
-                    <div className="flex justify-between items-start">
-                        <span className="font-medium text-sm opacity-90">Pending</span>
-                        <div className="bg-white/20 p-2 rounded-full"><Clock size={20} /></div>
+                    <div className="absolute top-0 right-0 w-24 h-24 bg-red-100/50 rounded-full blur-2xl -mr-10 -mt-10 pointer-events-none"></div>
+                    <div className="flex justify-between items-start relative z-10">
+                        <span className="font-bold text-gray-700 text-sm drop-shadow-sm">Pending</span>
+                        <div className="bg-white text-red-500 p-2.5 rounded-[14px] shadow-sm border border-red-50 group-hover:scale-110 group-hover:rotate-3 transition-transform duration-300"><Clock size={20} strokeWidth={2.5}/></div>
                     </div>
-                    <div>
-                        <div className="text-4xl font-bold">{stats.pending}</div>
-                        <div className="text-xs opacity-80 mt-1">Orders left</div>
+                    <div className="relative z-10">
+                        <div className="text-[40px] leading-none font-black text-gray-800 tracking-tighter">{stats.pending}</div>
+                        <div className="text-xs font-semibold text-gray-400 mt-1 uppercase tracking-wide">Orders left</div>
                     </div>
                 </div>
 
                 <div
-                    className="bg-gradient-to-br from-teal-400 to-emerald-500 p-5 rounded-3xl shadow-md text-white flex flex-col justify-between h-36 cursor-pointer hover:shadow-lg transition-shadow"
+                    className="bg-gradient-to-b from-white to-emerald-50/40 border border-emerald-100 p-5 rounded-[24px] shadow-[0_8px_20px_rgba(0,0,0,0.03)] flex flex-col justify-between h-36 cursor-pointer hover:shadow-md hover:-translate-y-1 transition-all duration-300 group relative overflow-hidden"
                     onClick={() => {
                         setOrderFilter('completed');
                         setActiveNav('deliveries');
                     }}
                 >
-                    <div className="flex justify-between items-start">
-                        <span className="font-medium text-sm opacity-90">Completed</span>
-                        <div className="bg-white/20 p-2 rounded-full"><CheckCircle size={20} /></div>
+                    <div className="absolute top-0 right-0 w-24 h-24 bg-emerald-100/50 rounded-full blur-2xl -mr-10 -mt-10 pointer-events-none"></div>
+                    <div className="flex justify-between items-start relative z-10">
+                        <span className="font-bold text-gray-700 text-sm drop-shadow-sm">Completed</span>
+                        <div className="bg-white text-emerald-500 p-2.5 rounded-[14px] shadow-sm border border-emerald-50 group-hover:scale-110 group-hover:rotate-3 transition-transform duration-300"><CheckCircle size={20} strokeWidth={2.5}/></div>
                     </div>
-                    <div>
-                        <div className="text-4xl font-bold">{stats.completed}</div>
-                        <div className="text-xs opacity-80 mt-1">Orders done</div>
+                    <div className="relative z-10">
+                        <div className="text-[40px] leading-none font-black text-gray-800 tracking-tighter">{stats.completed}</div>
+                        <div className="text-xs font-semibold text-gray-400 mt-1 uppercase tracking-wide">Orders done</div>
                     </div>
                 </div>
             </div>
@@ -606,24 +611,31 @@ export const RiderDashboard = () => {
                 )}
             </div>
 
-            {/* Weather Widget */}
+                {/* Weather Widget */}
             {weather && (
-                <div className="bg-gradient-to-r from-blue-400 to-indigo-500 p-5 rounded-3xl text-white shadow-md flex justify-between items-center relative overflow-hidden">
-                    <div className="absolute top-0 right-0 w-32 h-32 bg-white/10 rounded-full blur-2xl -mr-16 -mt-16 pointer-events-none"></div>
-                    <div className="flex items-center gap-4 z-10">
-                        <span className="text-4xl drop-shadow-md">
-                            {weather.weathercode === 0 ? "☀️" : weather.weathercode <= 3 ? "⛅" : weather.weathercode <= 48 ? "🌫️" : weather.weathercode <= 67 ? "🌧️" : weather.weathercode <= 77 ? "❄️" : "⛈️"}
-                        </span>
-                        <div>
-                            <p className="text-3xl font-bold">{Math.round(weather.temperature)}°<span className="text-xl">C</span></p>
-                            <p className="text-xs text-blue-100 mt-1 capitalize truncate max-w-[120px]">
+                <div className="bg-gradient-to-br from-[#3b82f6] to-[#6366f1] p-6 rounded-[28px] text-white shadow-[0_12px_30px_rgba(99,102,241,0.25)] flex justify-between items-center relative overflow-hidden">
+                    <div className="absolute -top-10 -right-10 w-40 h-40 bg-white/10 rounded-full blur-3xl pointer-events-none"></div>
+                    <div className="absolute -bottom-10 -left-10 w-32 h-32 bg-indigo-900/20 rounded-full blur-2xl pointer-events-none"></div>
+                    
+                    <div className="flex items-center gap-5 z-10 w-full">
+                        <div className="bg-white/20 p-4 rounded-[20px] backdrop-blur-sm border border-white/20 shadow-inner">
+                            <span className="text-[40px] leading-none drop-shadow-md filter">
+                                {weather.weathercode === 0 ? "☀️" : weather.weathercode <= 3 ? "⛅" : weather.weathercode <= 48 ? "🌫️" : weather.weathercode <= 67 ? "🌧️" : weather.weathercode <= 77 ? "❄️" : "⛈️"}
+                            </span>
+                        </div>
+                        <div className="flex-1">
+                            <div className="flex items-start gap-1">
+                                <p className="text-[42px] leading-none font-black tracking-tighter">{Math.round(weather.temperature)}</p>
+                                <span className="text-xl font-bold mt-1 opacity-80">°C</span>
+                            </div>
+                            <p className="text-sm text-indigo-100 mt-1 font-medium capitalize truncate">
                                 {weather.weathercode === 0 ? "Clear Sky" : weather.weathercode <= 3 ? "Partly Cloudy" : weather.weathercode <= 48 ? "Foggy" : weather.weathercode <= 67 ? "Rainy" : weather.weathercode <= 77 ? "Snowy" : "Thunderstorm"}
                             </p>
                         </div>
-                    </div>
-                    <div className="text-right z-10">
-                        <p className="text-lg font-bold">{Math.round(weather.windspeed)} <span className="text-xs font-normal">km/h</span></p>
-                        <p className="text-xs text-blue-100 mt-1">Wind Speed</p>
+                        <div className="text-right z-10 pl-4 border-l border-white/20">
+                            <p className="text-2xl font-black">{Math.round(weather.windspeed)}</p>
+                            <p className="text-[10px] uppercase font-bold text-indigo-200 tracking-wider">km/h Wind</p>
+                        </div>
                     </div>
                 </div>
             )}
@@ -707,40 +719,47 @@ export const RiderDashboard = () => {
                         <div
                             key={delivery._id}
                             onClick={() => setSelectedDelivery(delivery)}
-                            className="bg-white rounded-2xl p-4 shadow-sm border border-gray-100 relative overflow-hidden transition-all duration-300 hover:shadow-md cursor-pointer"
+                            className="bg-white rounded-[20px] p-5 shadow-[0_4px_15px_rgba(0,0,0,0.03)] border border-gray-100 relative overflow-hidden transition-all duration-300 hover:shadow-[0_8px_25px_rgba(0,0,0,0.06)] hover:-translate-y-0.5 cursor-pointer"
                         >
-                            {/* Status Strip */}
+                            {/* Modern Status Strip */}
                             <div className={`absolute left-0 top-0 bottom-0 w-1.5 ${delivery.isCustomerOnly ? 'bg-blue-500' :
                                 delivery.orderType === 'SPOT_SALE' ? 'bg-gradient-to-b from-purple-400 to-indigo-500' :
-                                    delivery.status === 'delivered' ? 'bg-teal-500' :
-                                        delivery.status === 'cancelled' ? 'bg-red-500' :
-                                            'bg-orange-400'
+                                    delivery.status === 'delivered' ? 'bg-[#10b981]' :
+                                        delivery.status === 'cancelled' ? 'bg-[#ef4444]' :
+                                            'bg-[#f59e0b]'
                                 }`}></div>
 
                             <div className="pl-3">
-                                <div className="flex justify-between items-start mb-3">
-                                    <div>
-                                        <h3 className="font-bold text-lg text-gray-800">{delivery.customer?.name}</h3>
-                                        <div className="flex items-center gap-1 text-xs text-gray-500 mt-1">
-                                            <MapPin size={12} />
-                                            <span className="truncate max-w-[200px]">{delivery.customer?.address?.fullAddress || "No Address"}</span>
+                                <div className="flex justify-between items-start mb-4">
+                                    <div className="flex gap-3">
+                                        <div className="w-10 h-10 rounded-full bg-gray-50 border border-gray-100 flex items-center justify-center shadow-inner mt-1">
+                                            <span className="text-sm font-black text-gray-600">
+                                                {delivery.customer?.name ? delivery.customer.name.charAt(0).toUpperCase() : 'C'}
+                                            </span>
+                                        </div>
+                                        <div>
+                                            <h3 className="font-bold text-[17px] text-gray-800 tracking-tight leading-none">{delivery.customer?.name}</h3>
+                                            <div className="flex items-center gap-1.5 text-[13px] text-gray-500 mt-2">
+                                                <MapPin size={14} className="text-teal-500 shrink-0" />
+                                                <span className="truncate max-w-[180px] font-medium">{delivery.customer?.address?.fullAddress || "No Address"}</span>
+                                            </div>
                                         </div>
                                     </div>
-                                    <div className="text-right">
-                                        <span className="badge bg-gray-100 text-gray-600 border-none text-xs mb-1 font-mono">
+                                    <div className="text-right flex flex-col items-end">
+                                        <span className="bg-gray-50 text-gray-500 px-2 py-0.5 rounded-md text-[11px] font-bold tracking-wider uppercase shadow-sm">
                                             #{delivery.isCustomerOnly ? (delivery.customer?.customerId || "NEW") : delivery._id.slice(-4)}
                                         </span>
-                                        <div className="text-teal-700 font-bold text-sm">
+                                        <div className="mt-2 text-teal-600 font-bold text-[15px]">
                                             {delivery.isCustomerOnly ? (
-                                                <span className="text-blue-600 text-[10px] uppercase font-bold">Customer</span>
+                                                <span className="text-blue-500 text-[11px] uppercase font-black tracking-wider">Customer</span>
                                             ) : delivery.orderType === 'BOTTLE_COLLECTION' ? (
-                                                <span className="text-orange-600">Collection</span>
+                                                <span className="text-orange-500 text-[11px] uppercase font-black tracking-wider">Collection</span>
                                             ) : (
                                                 `₹${delivery.totalAmount}`
                                             )}
                                         </div>
                                         {!delivery.isCustomerOnly && delivery.orderType !== 'BOTTLE_COLLECTION' && delivery.paymentMode === 'Cash' && (
-                                            <span className="text-[10px] font-bold px-1.5 py-0.5 rounded bg-amber-100 text-amber-700">CASH</span>
+                                            <span className="text-[10px] font-bold px-1.5 py-0.5 rounded bg-amber-100 text-amber-700 mt-1">CASH</span>
                                         )}
                                     </div>
                                 </div>
@@ -1344,48 +1363,48 @@ export const RiderDashboard = () => {
                 </div>
             )}
 
-            {/* Bottom Navigation */}
-            <div className="fixed bottom-0 left-0 right-0 bg-white shadow-[0_-4px_6px_-1px_rgba(0,0,0,0.05)] z-30 px-2 py-2 flex justify-around items-center pb-safe">
+            {/* Bottom Navigation (Floating Glass Pill) */}
+            <div className="fixed bottom-5 left-5 right-5 z-40 bg-white/80 backdrop-blur-xl border border-white shadow-[0_8px_30px_rgb(0,0,0,0.12)] rounded-[2rem] px-5 py-3 flex justify-between items-center pb-safe">
                 <button
-                    className={`flex flex-col items-center gap-1 w-16 ${activeNav === 'home' ? 'text-teal-600' : 'text-gray-400'}`}
+                    className={`flex flex-col items-center gap-1.5 w-14 transition-colors ${activeNav === 'home' ? 'text-teal-600 scale-105' : 'text-gray-400 hover:text-gray-600'}`}
                     onClick={() => setActiveNav('home')}
                 >
-                    <Home size={24} strokeWidth={activeNav === 'home' ? 2.5 : 2} />
-                    <span className="text-[10px] font-medium">Home</span>
+                    <Home size={22} strokeWidth={activeNav === 'home' ? 2.5 : 2} />
+                    <span className="text-[10px] font-bold tracking-wide uppercase">Home</span>
                 </button>
 
                 <button
-                    className={`flex flex-col items-center gap-1 w-16 ${activeNav === 'deliveries' ? 'text-teal-600' : 'text-gray-400'}`}
+                    className={`flex flex-col items-center gap-1.5 w-14 transition-colors ${activeNav === 'deliveries' ? 'text-teal-600 scale-105' : 'text-gray-400 hover:text-gray-600'}`}
                     onClick={() => setActiveNav('deliveries')}
                 >
-                    <List size={24} strokeWidth={activeNav === 'deliveries' ? 2.5 : 2} />
-                    <span className="text-[10px] font-medium">Orders</span>
+                    <List size={22} strokeWidth={activeNav === 'deliveries' ? 2.5 : 2} />
+                    <span className="text-[10px] font-bold tracking-wide uppercase">Orders</span>
                 </button>
 
                 {/* Central Start/Stop Button */}
-                <div className="relative -top-6">
+                <div className="relative -top-8 px-2">
                     <button
                         onClick={toggleDeliverySession}
-                        className={`btn btn-circle w-16 h-16 shadow-xl border-4 border-gray-50 ${isDeliveryStarted ? 'btn-error' : 'btn-primary'}`}
+                        className={`btn btn-circle w-[68px] h-[68px] shadow-[0_10px_25px_rgba(0,0,0,0.2)] border-4 border-white ${isDeliveryStarted ? 'bg-red-500 hover:bg-red-600' : 'bg-[#0d9488] hover:bg-[#0f766e]'} text-white transition-transform hover:scale-105`}
                     >
-                        {isDeliveryStarted ? <Square size={24} fill="currentColor" /> : <Play size={28} fill="currentColor" className="ml-1" />}
+                        {isDeliveryStarted ? <Square size={26} fill="currentColor" /> : <Play size={30} fill="currentColor" className="ml-1" />}
                     </button>
                 </div>
 
                 <button
-                    className={`flex flex-col items-center gap-1 w-16 ${activeNav === 'history' ? 'text-teal-600' : 'text-gray-400'}`}
+                    className={`flex flex-col items-center gap-1.5 w-14 transition-colors ${activeNav === 'history' ? 'text-teal-600 scale-105' : 'text-gray-400 hover:text-gray-600'}`}
                     onClick={() => setActiveNav('history')}
                 >
-                    <TrendingUp size={24} strokeWidth={activeNav === 'history' ? 2.5 : 2} />
-                    <span className="text-[10px] font-medium">History</span>
+                    <TrendingUp size={22} strokeWidth={activeNav === 'history' ? 2.5 : 2} />
+                    <span className="text-[10px] font-bold tracking-wide uppercase">History</span>
                 </button>
 
                 <button
-                    className={`flex flex-col items-center gap-1 w-16 ${activeNav === 'profile' ? 'text-teal-600' : 'text-gray-400'}`}
+                    className={`flex flex-col items-center gap-1.5 w-14 transition-colors ${activeNav === 'profile' ? 'text-teal-600 scale-105' : 'text-gray-400 hover:text-gray-600'}`}
                     onClick={() => setActiveNav('profile')}
                 >
-                    <User size={24} strokeWidth={activeNav === 'profile' ? 2.5 : 2} />
-                    <span className="text-[10px] font-medium">Profile</span>
+                    <User size={22} strokeWidth={activeNav === 'profile' ? 2.5 : 2} />
+                    <span className="text-[10px] font-bold tracking-wide uppercase">Profile</span>
                 </button>
             </div>
             <SpotSaleModal
