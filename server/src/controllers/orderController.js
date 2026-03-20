@@ -242,6 +242,24 @@ exports.createOrder = async (req, res) => {
             deliverySlot: validatedSlot || undefined,
         });
 
+        // --- DEDUCT STOCK (if tracking enabled) ---
+        for (const item of products) {
+            const productDef = productMap[item.product.toString()];
+            if (productDef && productDef.trackInventory) {
+                // We use findByIdAndUpdate to be more atomic
+                const updatedProd = await Product.findByIdAndUpdate(
+                    productDef._id,
+                    { $inc: { stock: -item.quantity } },
+                    { new: true }
+                );
+                
+                // If stock somehow went negative (race condition), log it
+                if (updatedProd.stock < 0) {
+                    console.warn(`[Order] Product ${productDef.name} stock went negative (${updatedProd.stock}) after order ${order._id}`);
+                }
+            }
+        }
+
         // Create Transaction if Wallet Payment
         if (isWalletPayment) {
             await Transaction.create({
@@ -597,15 +615,13 @@ exports.updateOrderStatus = async (req, res) => {
             }
 
             // --- HANDLE BOTTLE ISSUANCE & RETURN ---
-            // Process bottle transactions ONLY if transitioning to 'delivered' for the first time
-            if (order.status !== "delivered") {
-
-            const customer = await User.findById(order.customer._id);
-            if (customer) {
+            // Process bottle transactions ONLY if they haven't been processed yet for this order
+            const customer = await User.findById(order.customer._id || order.customer);
+            if (customer && !order.bottlesProcessed) {
                 let balanceChanged = false;
                 const BottleTransaction = require("../models/BottleTransaction");
 
-                // 1. Issue Bottles (from Order)
+                // 1. Issue Bottles (What the customer is taking today)
                 if (order.bottlesIssued > 0) {
                     customer.remainingBottles = (customer.remainingBottles || 0) + order.bottlesIssued;
                     balanceChanged = true;
@@ -620,15 +636,19 @@ exports.updateOrderStatus = async (req, res) => {
                         recordedBy: req.user._id
                     });
                 }
+                
+                // Add Assets to hand
                 if (deliveredAssets && Array.isArray(deliveredAssets) && deliveredAssets.length > 0) {
+                    customer.assetsInHand = customer.assetsInHand || [];
                     customer.assetsInHand.push(...deliveredAssets);
                     balanceChanged = true;
                 }
 
-                // 2. Return Bottles (from Rider Input)
-                if (bottlesReturned && Number(bottlesReturned) > 0) {
-                    order.bottlesReturned = Number(bottlesReturned);
-                    customer.remainingBottles = (customer.remainingBottles || 0) - Number(bottlesReturned);
+                // 2. Return Bottles (What the rider collected today)
+                const collectedQty = Number(bottlesReturned) || 0;
+                if (collectedQty > 0) {
+                    order.bottlesReturned = collectedQty;
+                    customer.remainingBottles = Math.max(0, (customer.remainingBottles || 0) - collectedQty);
                     balanceChanged = true;
 
                     await BottleTransaction.create({
@@ -636,22 +656,25 @@ exports.updateOrderStatus = async (req, res) => {
                         rider: req.user._id,
                         order: order._id,
                         type: "returned",
-                        quantity: Number(bottlesReturned),
+                        quantity: collectedQty,
                         notes: "Collected on delivery",
                         recordedBy: req.user._id,
                     });
                 }
                 
+                // Remove Assets from hand
                 if (returnedAssets && Array.isArray(returnedAssets) && returnedAssets.length > 0) {
-                    customer.assetsInHand = customer.assetsInHand.filter(asset => !returnedAssets.includes(asset));
+                    customer.assetsInHand = (customer.assetsInHand || []).filter(asset => !returnedAssets.includes(asset));
                     balanceChanged = true;
                 }
 
                 if (balanceChanged) {
                     await customer.save();
                 }
+                
+                // Mark this order's bottles as officially processed in the database
+                order.bottlesProcessed = true;
             }
-            } // end idempotency check
 
             // Send Delivery SMS
             const { sendDeliveryNotification } = require("../utils/notification");
@@ -661,7 +684,7 @@ exports.updateOrderStatus = async (req, res) => {
                 console.error("Delivery SMS failed", smsErr);
             }
         } else if (status === "cancelled" && order.status !== "cancelled") {
-            // Refund the Wallet if the order was paid via Wallet
+            // 1. REFUND WALLET (if paid via Wallet)
             const mode = (order.paymentMode || "").toUpperCase();
             if (order.paymentStatus === "paid" && mode === "WALLET") {
                 let customerInstance = await User.findById(order.customer._id || order.customer);
@@ -676,13 +699,55 @@ exports.updateOrderStatus = async (req, res) => {
                         type: "CREDIT",
                         mode: "WALLET",
                         status: "SUCCESS",
-                        description: `Refund for Cancelled Order #${order.orderId || order._id}`,
+                        description: `Refund: Cancelled Order #${order.orderId || order._id}`,
                         order: order._id,
                         performedBy: req.user._id,
                         balanceAfter: customerInstance.walletBalance
                     });
 
                     order.paymentStatus = "refunded";
+                }
+            }
+
+            // 2. REVERSE BOTTLE ISSUANCE (if bottles were already processed)
+            if (order.bottlesProcessed && order.bottlesIssued > 0) {
+                let customerInstance = await User.findById(order.customer._id || order.customer);
+                if (customerInstance) {
+                    // Subtract what was issued
+                    customerInstance.remainingBottles = Math.max(0, (customerInstance.remainingBottles || 0) - order.bottlesIssued);
+                    
+                    // Add back what was returned (since the order is cancelled, we assume the collection didn't happen or is void)
+                    if (order.bottlesReturned > 0) {
+                        customerInstance.remainingBottles += order.bottlesReturned;
+                    }
+                    
+                    await customerInstance.save();
+
+                    const BottleTransaction = require("../models/BottleTransaction");
+                    await BottleTransaction.create({
+                        customer: customerInstance._id,
+                        rider: req.user._id,
+                        order: order._id,
+                        type: "adjustment",
+                        quantity: order.bottlesIssued,
+                        notes: `Reversed via Cancellation of Order #${order.orderId || order._id}`,
+                        recordedBy: req.user._id
+                    });
+                    
+                    // Reset processed flag so it can be re-delivered if needed
+                    order.bottlesProcessed = false;
+                    order.bottlesReturned = 0;
+                }
+            }
+            // 3. RECLAIM PRODUCT STOCK
+            if (order.products && order.products.length > 0) {
+                const ProductModel = require("../models/Product");
+                for (const item of order.products) {
+                    const prod = await ProductModel.findById(item.product._id || item.product);
+                    if (prod && prod.trackInventory) {
+                        prod.stock += (item.quantity || 0);
+                        await prod.save();
+                    }
                 }
             }
         }
@@ -694,7 +759,7 @@ exports.updateOrderStatus = async (req, res) => {
         await createNotification({
             recipient: order.customer._id,
             title: `Order ${status.charAt(0).toUpperCase() + status.slice(1)}`,
-            message: `Your order #${order._id} has been ${status}.`,
+            message: `Your order #${order.orderId || order._id} has been ${status}.`,
             type: "info",
             link: "/dashboard/orders"
         });

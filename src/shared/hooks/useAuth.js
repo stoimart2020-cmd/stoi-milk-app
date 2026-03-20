@@ -19,15 +19,27 @@ export const useAuth = () => {
       console.error("Logout API error:", error);
     }
 
-    // Clear token from localStorage
+    // Determine current portal and target login path
+    const path = window.location.pathname;
+    let target = "/"; // default customer home
+
+    if (path.includes("/administrator/") || path.includes("/roles")) {
+      target = "/administrator/login";
+    } else if (path.includes("/rider/")) {
+      target = "/rider/login";
+    } else if (path.includes("/fieldsales/")) {
+      target = "/fieldsales/login";
+    }
+
+    // Clear session storage/local storage
     localStorage.removeItem("stoi_token");
     localStorage.removeItem("stoi_current_user_id");
 
-    // Clear all cached queries
+    // Clear all cached queries immediately so the next user doesn't see old data
     queryClient.clear();
 
-    // Redirect to login page
-    window.location.href = "/";
+    // Redirect to the appropriate portal login page
+    window.location.href = target;
   };
 
   return {

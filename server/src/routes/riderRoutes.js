@@ -16,11 +16,13 @@ const {
     getRiderSelfFinancials,
     updateMyRoute,
     getAllSalarySummary,
-    getTempOtp
+    getTempOtp,
+    updateLiveLocation
 } = require("../controllers/riderController");
 
 // --- Rider Self-Service (Allowed for active RIDER role) ---
 router.put("/shift", protect, updateShiftStatus);
+router.put("/location", protect, updateLiveLocation); // New endpoint for GPS tracking
 router.get("/my/financials", protect, getRiderSelfFinancials);
 router.get("/my/km-log", protect, getTodayKmLog);
 router.get("/my/customers", protect, (req, res) => {

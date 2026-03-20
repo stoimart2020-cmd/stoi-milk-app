@@ -30,7 +30,23 @@ const getTomorrowDate = () => new Date(Date.now() + 24 * 60 * 60 * 1000);
 
 // Helper: Determine delivery quantity for a subscription on a given date
 const getDeliveryQuantity = async (sub, targetDateStr, targetDayName) => {
-    // Check Modifications First (Overrides everything)
+    // 1. Check Customer Vacation (Universal Skip)
+    const user = sub.user;
+    if (user && user.vacation && user.vacation.isActive) {
+        const targetDate = new Date(targetDateStr + 'T00:00:00.000Z');
+        const vacationStart = new Date(user.vacation.startDate);
+        const vacationEnd = user.vacation.endDate ? new Date(user.vacation.endDate) : null;
+
+        // If it's an indefinite vacation, or within the start/end range
+        const isOnVacation = targetDate >= vacationStart && (!vacationEnd || targetDate <= vacationEnd);
+        
+        if (isOnVacation) {
+            console.log(`[SUBSCRIPTION] Skipping for ${user.name}: User on Vacation`);
+            return 0;
+        }
+    }
+
+    // 2. Check Modifications First (Overrides everything)
     const modification = await SubscriptionModification.findOne({
         subscription: sub._id,
         date: targetDateStr
@@ -43,7 +59,7 @@ const getDeliveryQuantity = async (sub, targetDateStr, targetDayName) => {
         return modification.quantity;
     }
 
-    // Check Standard Schedule
+    // 3. Check Standard Schedule
     if (sub.frequency === 'Daily') {
         return sub.quantity;
     } else if (sub.frequency === 'Alternate Days') {
@@ -83,14 +99,33 @@ const processSubscriptionPayments = async (targetDateOverride = null) => {
     console.log('[CRON] Starting Daily Subscription Payment & Order Generation Job...');
 
     try {
-        // 1. Determine "Tomorrow's" Date (or use override)
+        // 1. Determine "Tomorrow's" Date
         const tomorrow = targetDateOverride ? new Date(targetDateOverride) : getTomorrowDate();
         const tomorrowDateStr = formatDate(tomorrow);
         const tomorrowDayName = tomorrow.toLocaleDateString('en-US', { weekday: 'long', timeZone: 'Asia/Kolkata' });
 
         console.log(`[CRON] Processing for delivery date: ${tomorrowDateStr} (${tomorrowDayName})`);
 
-        // 2. Fetch ALL Active Subscriptions (both regular and trial)
+        // 2. Auto-Resume Check: Find subscriptions paused due to 'Insufficient wallet balance'
+        // If they now have enough money, mark them as 'active' again
+        const pausedSubs = await Subscription.find({ 
+            status: 'paused', 
+            pauseReason: /Insufficient wallet balance/i 
+        }).populate('product').populate('user');
+
+        console.log(`[CRON] Checking ${pausedSubs.length} paused subscriptions for auto-resume...`);
+        for (const pSub of pausedSubs) {
+            const qty = await getDeliveryQuantity(pSub, tomorrowDateStr, tomorrowDayName);
+            const needed = (pSub.product?.price || 0) * qty;
+            if (qty > 0 && pSub.user?.walletBalance >= needed) {
+                pSub.status = 'active';
+                pSub.pauseReason = '';
+                await pSub.save();
+                console.log(`[CRON] Auto-resumed Sub ${pSub._id} for customer ${pSub.user.name}`);
+            }
+        }
+
+        // 3. Fetch ALL Active Subscriptions
         const subscriptions = await Subscription.find({
             status: 'active'
         }).populate('product').populate('user');
@@ -142,6 +177,25 @@ const processSubscriptionPayments = async (targetDateOverride = null) => {
                     continue;
                 }
 
+                // --- Safeguard: Check if User is Active ---
+                if (sub.user.isActive === false) {
+                    console.log(`[CRON] Skipping sub ${sub._id}: User ${sub.user.name} is DEACTIVATED`);
+                    skippedCount++;
+                    continue;
+                }
+
+                // --- Safeguard: Check Product Stock ---
+                if (sub.product.trackInventory) {
+                    if (sub.product.stock < quantity) {
+                        console.warn(`[CRON] Insufficient stock for ${sub.product.name}. Required: ${quantity}, Available: ${sub.product.stock}. Skipping sub ${sub._id}`);
+                        skippedCount++;
+                        continue;
+                    }
+                    // Deduct stock (we will save the product later if needed, or save here)
+                    const Product = require("../models/Product");
+                    await Product.findByIdAndUpdate(sub.product._id, { $inc: { stock: -quantity } });
+                }
+
                 // Calculate Amount
                 const price = sub.product.price;
                 const totalAmount = price * quantity;
@@ -159,7 +213,7 @@ const processSubscriptionPayments = async (targetDateOverride = null) => {
                         await createNotification({
                             recipient: sub.user._id,
                             title: "Subscription Paused",
-                            message: `Your subscription for ${sub.product.name} has been paused due to low wallet balance. Please recharge ₹${totalAmount - sub.user.walletBalance} to resume.`,
+                            message: `Subscription for ${sub.product.name} paused due to low balance. Required: ₹${totalAmount}.`,
                             type: "error",
                             link: "/customer/wallet"
                         });
@@ -178,7 +232,7 @@ const processSubscriptionPayments = async (targetDateOverride = null) => {
                         type: "DEBIT",
                         mode: "WALLET",
                         status: "SUCCESS",
-                        description: `Subscription payment - ${sub.product.name} (${quantity} units)`,
+                        description: `Subscription: ${sub.product.name} (${quantity} units)`,
                         performedBy: sub.user._id,
                         balanceAfter: sub.user.walletBalance
                     });
@@ -286,11 +340,25 @@ const autoAssignOrders = async (targetDateOverride = null) => {
         let assignedCount = 0;
         let failedCount = 0;
 
-        // Get available riders
-        const riders = await Employee.find({ role: 'RIDER', isActive: true });
+        // Get available riders (must be active AND not on leave/absent for tomorrow)
+        const allRiders = await Employee.find({ role: 'RIDER', isActive: true });
+        const riders = allRiders.filter(rider => {
+            // Check if rider has attendance entry for tomorrow
+            if (rider.attendance && rider.attendance.length > 0) {
+                const tomorrowAttendance = rider.attendance.find(a => 
+                    formatDate(new Date(a.date)) === tomorrowDateStr
+                );
+                // If marked Absent or Leave, they are unavailable
+                if (tomorrowAttendance && ['Absent', 'Leave'].includes(tomorrowAttendance.status)) {
+                    console.log(`[CRON] Rider ${rider.name} is UNAVAILABLE (${tomorrowAttendance.status})`);
+                    return false;
+                }
+            }
+            return true;
+        });
 
         if (riders.length === 0) {
-            console.warn('[CRON] No active riders available for assignment');
+            console.warn('[CRON] No available riders for assignment on ' + tomorrowDateStr);
             return;
         }
 

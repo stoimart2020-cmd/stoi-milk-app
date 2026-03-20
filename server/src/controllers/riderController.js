@@ -1010,6 +1010,50 @@ exports.getAllSalarySummary = async (req, res) => {
     }
 };
 
+exports.updateLiveLocation = async (req, res) => {
+    try {
+        const { coordinates, accuracy, speed, heading, battery, timestamp } = req.body;
+        const riderId = req.user._id;
+
+        if (!coordinates || !Array.isArray(coordinates) || coordinates.length !== 2) {
+            return res.status(400).json({ success: false, message: "Invalid coordinates" });
+        }
+
+        // Freshness Check: If the update is older than 2 minutes (e.g. from a cache), ignore it for LIVE tracking
+        const reportedTime = timestamp ? new Date(timestamp) : new Date();
+        const twoMinutesAgo = new Date(Date.now() - 2 * 60 * 1000);
+
+        if (reportedTime < twoMinutesAgo) {
+            return res.status(200).json({ 
+                success: true, 
+                message: "Location update outside of time window, skipping live update",
+                skipped: true 
+            });
+        }
+
+        const updateData = {
+            "liveLocation.coordinates.coordinates": coordinates,
+            "liveLocation.accuracy": accuracy || 0,
+            "liveLocation.speed": speed || 0,
+            "liveLocation.heading": heading || 0,
+            "liveLocation.battery": battery || null,
+            "liveLocation.lastUpdated": new Date(),
+            "liveLocation.isTracking": true
+        };
+
+        const rider = await Employee.findByIdAndUpdate(riderId, { $set: updateData }, { new: true });
+
+        if (!rider) {
+            return res.status(404).json({ success: false, message: "Rider not found" });
+        }
+
+        res.status(200).json({ success: true, message: "Location updated successfully" });
+    } catch (error) {
+        console.error("Update Live Location Error:", error);
+        res.status(500).json({ success: false, message: error.message });
+    }
+};
+
 exports.getTempOtp = async (req, res) => {
     try {
         const { id } = req.params;

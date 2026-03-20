@@ -110,6 +110,20 @@ exports.addPayment = async (req, res) => {
             req
         );
 
+        // --- REFERRAL ACTIVATION TRIGGER ---
+        if (type === "CREDIT" && user.role === "CUSTOMER") {
+            const Referral = require("../models/Referral");
+            const { processReferralReward } = require("./referralController");
+            
+            // Find any pending referral for this user
+            const pendingReferral = await Referral.findOne({ referee: user._id, status: "pending" });
+            if (pendingReferral) {
+                // If it's a first-recharge trigger (or if minOrders is met by having a balance now)
+                await processReferralReward(pendingReferral._id);
+                console.log(`[Referral] Triggered reward for user ${user._id} upon recharge`);
+            }
+        }
+
         res.status(201).json({
             success: true,
             message: "Payment added successfully",
@@ -401,8 +415,13 @@ exports.getTransactions = async (req, res) => {
     try {
         const { page = 1, limit = 20 } = req.query;
 
-        // If user is a customer, force them to see only their own transactions
-        if (req.user.role === "CUSTOMER") {
+        // RBAC: If the user doesn't have the 'payments' view permission, 
+        // they can ONLY see their own transactions (for Customers/Riders/etc)
+        const hasFullFinanceAccess = req.user.role === 'SUPERADMIN' || 
+                                     (req.user.customRole?.permissions?.payments?.view === true) ||
+                                     (req.user.customRole?.permissions?.payments === true);
+                                     
+        if (!hasFullFinanceAccess) {
             req.query.userId = req.user._id;
         }
 
