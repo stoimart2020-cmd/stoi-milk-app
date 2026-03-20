@@ -171,7 +171,7 @@ function AppRoute() {
       path: "/administrator/login",
       element: currentAdmin?.user?.role ? (
         currentAdmin.user.role === 'RIDER' ? <Navigate to="/rider/dashboard" /> :
-        currentAdmin.user.role === 'FIELD_OFFICER' ? <Navigate to="/fieldsales/dashboard" /> :
+        currentAdmin.user.role === 'FIELD_MARKETING' ? <Navigate to="/fieldsales/dashboard" /> :
         <Navigate to="/administrator/dashboard" />
       ) : (
         <AdministratorLogin />
@@ -179,13 +179,13 @@ function AppRoute() {
     },
     {
       path: "/administrator/dashboard",
-      element: currentAdmin?.user?.role && !['RIDER', 'FIELD_OFFICER'].includes(currentAdmin.user.role) ? (
+      element: currentAdmin?.user?.role && !['RIDER', 'FIELD_MARKETING'].includes(currentAdmin.user.role) ? (
         <ErrorBoundary>
           <AdministratorDashboard />
         </ErrorBoundary>
       ) : (
         currentAdmin?.user?.role === 'RIDER' ? <Navigate to="/rider/dashboard" /> :
-        currentAdmin?.user?.role === 'FIELD_OFFICER' ? <Navigate to="/fieldsales/dashboard" /> :
+        currentAdmin?.user?.role === 'FIELD_MARKETING' ? <Navigate to="/fieldsales/dashboard" /> :
         <Navigate to="/administrator/login" />
       ),
       children: [
@@ -350,7 +350,7 @@ function AppRoute() {
     },
     {
       path: "/rider/dashboard",
-      element: currentAdmin?.user?.role === 'RIDER' ? (
+      element: ['RIDER', 'ADMIN', 'SUPERADMIN'].includes(currentAdmin?.user?.role) ? (
         <RiderDashboard />
       ) : (
         <Navigate to="/rider/login" />
@@ -358,7 +358,7 @@ function AppRoute() {
     },
     {
       path: "/fieldsales/login",
-      element: currentAdmin?.user?.role === 'FIELD_OFFICER' ? (
+      element: ['FIELD_MARKETING', 'FIELD_OFFICER'].includes(currentAdmin?.user?.role) ? (
         <Navigate to="/fieldsales/dashboard" />
       ) : currentAdmin?.user?.role ? (
         <Navigate to="/administrator/dashboard" />
@@ -368,7 +368,7 @@ function AppRoute() {
     },
     {
       path: "/fieldsales/dashboard",
-      element: currentAdmin?.user?.role === 'FIELD_OFFICER' ? (
+      element: ['FIELD_MARKETING', 'FIELD_OFFICER', 'ADMIN', 'SUPERADMIN'].includes(currentAdmin?.user?.role) ? (
         <FieldSalesDashboard />
       ) : (
         <Navigate to="/fieldsales/login" />

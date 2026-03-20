@@ -60,6 +60,7 @@ export const RiderLogin = () => {
           setStep("set_pin");
         } else {
           await queryClient.invalidateQueries({ queryKey: ["user"] });
+          await queryClient.invalidateQueries({ queryKey: ["currentAdmin"] });
           navigate("/rider/dashboard", { replace: true });
         }
       }
@@ -84,6 +85,7 @@ export const RiderLogin = () => {
             return;
         }
         await queryClient.invalidateQueries({ queryKey: ["user"] });
+        await queryClient.invalidateQueries({ queryKey: ["currentAdmin"] });
         navigate("/rider/dashboard", { replace: true });
       }
     } catch (err) {
@@ -92,6 +94,7 @@ export const RiderLogin = () => {
             const res = await axiosInstance.post("/api/auth/super-admin-login", { username: mobile, password: pin });
             if (res.data.success) {
                 await queryClient.invalidateQueries({ queryKey: ["user"] });
+                await queryClient.invalidateQueries({ queryKey: ["currentAdmin"] });
                 navigate("/rider/dashboard", { replace: true });
                 return;
             }
@@ -113,6 +116,7 @@ export const RiderLogin = () => {
       if (res.data.success) {
         toast.success("PIN set successfully!");
         await queryClient.invalidateQueries({ queryKey: ["user"] });
+        await queryClient.invalidateQueries({ queryKey: ["currentAdmin"] });
         navigate("/rider/dashboard", { replace: true });
       }
     } catch (err) {

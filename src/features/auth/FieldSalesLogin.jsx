@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { useMutation } from "@tanstack/react-query";
-import { sendOtp, verifyOtp } from "../../shared/api";
+import { sendOtp, verifyOtp } from "../../shared/api/auth";
 import { queryClient } from "../../shared/utils/queryClient";
 import { Briefcase } from "lucide-react";
 import toast from "react-hot-toast";
@@ -27,9 +27,10 @@ export const FieldSalesLogin = () => {
         mutationFn: verifyOtp,
         onSuccess: async (data) => {
             const user = data?.data?.result;
-            if (user?.role === "FIELD_MARKETING" || user?.role === "ADMIN" || user?.role === "SUPERADMIN") {
+            if (user?.role === "FIELD_MARKETING" || user?.role === "FIELD_OFFICER" || user?.role === "ADMIN" || user?.role === "SUPERADMIN") {
                 toast.success("Login Successful");
                 await queryClient.invalidateQueries({ queryKey: ["user"] });
+                await queryClient.invalidateQueries({ queryKey: ["currentAdmin"] });
                 navigate("/fieldsales/dashboard", { replace: true });
             } else {
                 toast.error("Access Denied: You are not a Field Sales officer");
