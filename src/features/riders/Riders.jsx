@@ -11,8 +11,12 @@ import {
     MapPin,
     Calendar,
     Filter,
-    Warehouse
+    Warehouse,
+    Share2,
+    Copy,
+    ExternalLink
 } from "lucide-react";
+import { toast } from "react-hot-toast";
 import { format } from "date-fns";
 import { useNavigate } from "react-router-dom";
 
@@ -48,6 +52,12 @@ export const Riders = () => {
 
     const handleViewDetails = (rider) => {
         navigate(`/administrator/dashboard/riders/${rider._id}`);
+    };
+
+    const handleCopyAppLink = (rider) => {
+        const link = `${window.location.origin}/rider/login`;
+        navigator.clipboard.writeText(link);
+        toast.success(`Login link copied for ${rider.name}`);
     };
 
     return (
@@ -207,6 +217,14 @@ export const Riders = () => {
                                         </td>
                                         <td className="px-6 py-4 text-right">
                                             <div className="flex items-center justify-end gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
+                                                <button
+                                                    onClick={() => handleCopyAppLink(rider)}
+                                                    className="p-2 text-indigo-600 hover:bg-indigo-50 rounded-lg transition-colors flex items-center gap-1.5 text-xs font-semibold group/btn"
+                                                    title="Copy App Login Link"
+                                                >
+                                                    <Share2 size={16} />
+                                                    <span className="hidden xl:inline">Link</span>
+                                                </button>
                                                 <button
                                                     onClick={() => handleEdit(rider)}
                                                     className="p-2 text-blue-600 hover:bg-blue-50 rounded-lg transition-colors text-sm"

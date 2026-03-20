@@ -2,7 +2,7 @@ import React, { useState, useEffect } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { axiosInstance } from "../../shared/api/axios";
 import { getRoles } from "../../shared/api/roles";
-import { Plus, Edit2, Search, UserPlus, Shield } from "lucide-react";
+import { Plus, Edit2, Search, UserPlus, Shield, Share2 } from "lucide-react";
 import { toast } from "react-hot-toast";
 
 const STAFF_ROLES = [
@@ -110,6 +110,16 @@ export default function StaffManagement() {
         s.email?.toLowerCase().includes(search.toLowerCase())
     );
 
+    const handleCopyAppLink = (member) => {
+        let path = "/administrator/login";
+        if (member.role === 'FIELD_OFFICER' || member.role === 'FIELD_MARKETING') {
+            path = "/fieldsales/login";
+        }
+        const link = `${window.location.origin}${path}`;
+        navigator.clipboard.writeText(link);
+        toast.success(`Login link copied for ${member.name}`);
+    };
+
     if (isLoading) return <div className="p-8 text-center text-gray-500">Loading staff...</div>;
 
     return (
@@ -180,7 +190,15 @@ export default function StaffManagement() {
                                             <span className="text-gray-400 text-xs italic">No explicit role</span>
                                         )}
                                     </td>
-                                    <td className="px-6 py-4 text-right">
+                                    <td className="px-6 py-4 text-right flex items-center justify-end gap-2">
+                                        <button
+                                            onClick={() => handleCopyAppLink(s)}
+                                            className="p-1.5 text-indigo-600 hover:bg-indigo-50 rounded-lg transition-colors flex items-center gap-1 text-xs font-semibold"
+                                            title="Copy Staff Login Link"
+                                        >
+                                            <Share2 size={16} />
+                                            <span>Link</span>
+                                        </button>
                                         <button
                                             onClick={() => { setEditingStaff(s); setIsModalOpen(true); }}
                                             className="text-gray-400 hover:text-green-600 transition"
