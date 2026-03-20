@@ -1469,9 +1469,26 @@ export const RiderDashboard = () => {
                 isOpen={!!selectedDelivery}
                 onClose={() => setSelectedDelivery(null)}
                 delivery={selectedDelivery}
-                onSaveDetails={(payload) => {
+                onSaveDetails={(payload, isNext) => {
                     handleStatusUpdate(payload.deliveryId, payload.status, payload);
-                    setSelectedDelivery(null);
+                    
+                    if (isNext) {
+                        const remaining = todayDeliveries.filter(d => 
+                            (d.status === 'pending' || d.status === 'confirmed') && 
+                            d._id !== payload.deliveryId // Exclude the one we just saved
+                        );
+                        if (remaining.length > 0) {
+                            // Find the index of current delivery to try and get the immediate next one
+                            const currentIdx = todayDeliveries.findIndex(d => d._id === payload.deliveryId);
+                            const nextDel = todayDeliveries.slice(currentIdx + 1).find(d => d.status === 'pending' || d.status === 'confirmed') || remaining[0];
+                            setSelectedDelivery(nextDel);
+                        } else {
+                            setSelectedDelivery(null);
+                            toast.success("All caught up! No more pending deliveries.");
+                        }
+                    } else {
+                        setSelectedDelivery(null);
+                    }
                 }}
                 onDeliverNewProduct={(customer) => {
                     setSpotSaleCustomer(customer);

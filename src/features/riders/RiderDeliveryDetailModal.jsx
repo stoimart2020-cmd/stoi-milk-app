@@ -56,7 +56,10 @@ export const RiderDeliveryDetailModal = ({
 
     const customer = delivery.customer;
     const isCustomerOnly = delivery.isCustomerOnly;
-    const amountDue = isCustomerOnly ? 0 : localProducts.reduce((sum, p) => sum + (p.price * p.quantity), 0);
+    const currentOrderTotal = isCustomerOnly ? 0 : localProducts.reduce((sum, p) => sum + (p.price * p.quantity), 0);
+    const previousDues = customer?.walletBalance < 0 ? Math.abs(customer.walletBalance) : 0;
+    const unbilled = customer?.unbilledConsumption || 0;
+    const amountDue = currentOrderTotal + previousDues + unbilled;
 
     const handleImageUpload = (e) => {
         const files = Array.from(e.target.files);
@@ -114,7 +117,7 @@ export const RiderDeliveryDetailModal = ({
             deliveredAssets,
             returnedAssets
         };
-        onSaveDetails(payload);
+        onSaveDetails(payload, arguments[1] === true); // pass isNext boolean
     };
 
     if (cancelPrompt.show) {
@@ -408,9 +411,13 @@ export const RiderDeliveryDetailModal = ({
                             <span className="text-gray-500 mr-2">Rs</span>
                             <input
                                 type="number"
+                                min="0"
                                 className="w-full outline-none text-[16px] bg-transparent"
                                 value={cashAmount}
-                                onChange={(e) => setCashAmount(e.target.value)}
+                                onChange={(e) => {
+                                    const val = e.target.value;
+                                    if (val === "" || Number(val) >= 0) setCashAmount(val);
+                                }}
                             />
                         </div>
                     </div>
@@ -422,9 +429,13 @@ export const RiderDeliveryDetailModal = ({
                                 <span className="text-gray-500 mr-2">Rs</span>
                                 <input
                                     type="number"
+                                    min="0"
                                     className="w-full outline-none text-[16px] bg-transparent"
                                     value={chequeAmount}
-                                    onChange={(e) => setChequeAmount(e.target.value)}
+                                    onChange={(e) => {
+                                        const val = e.target.value;
+                                        if (val === "" || Number(val) >= 0) setChequeAmount(val);
+                                    }}
                                 />
                             </div>
                         </div>
@@ -502,7 +513,7 @@ export const RiderDeliveryDetailModal = ({
                     </button>
                     <button
                         className="flex-1 border border-[#12b8b0] text-[#12b8b0] text-[15px] font-medium py-3 rounded-xl active:bg-teal-50 transition-colors"
-                        onClick={() => handleSave('delivered')} // Ideally triggering NEXT flow in parent
+                        onClick={() => handleSave('delivered', true)}
                     >
                         Next
                     </button>
