@@ -114,6 +114,11 @@ export const DeliveryDashboard = () => {
         queryFn: getAllRiders,
     });
 
+    const dash = dashData?.result || {};
+    const stats = dash.stats || {};
+    const orders = ordersData?.result || [];
+    const riders = ridersData?.result || [];
+
     const assignMutation = useMutation({
         mutationFn: bulkAssignRider,
         onSuccess: (data) => {
@@ -362,7 +367,7 @@ export const DeliveryDashboard = () => {
                                     {/* Payment breakdown */}
                                     {dash.paymentBreakdown?.length > 0 && (
                                         <div className="mt-4 pt-3 border-t border-white/20 space-y-1">
-                                            {dash.paymentBreakdown.map(pb => (
+                                            {dash.paymentBreakdown?.map(pb => (
                                                 <div key={pb._id} className="flex justify-between text-xs">
                                                     <span className="opacity-80">{pb._id || "Unknown"}</span>
                                                     <span className="font-medium">₹{pb.total.toLocaleString()} ({pb.count})</span>
@@ -602,7 +607,7 @@ export const DeliveryDashboard = () => {
                                     <div className="flex flex-col h-full bg-[#eeebeb]">
                                         <div className="bg-[#177a66] text-white p-4 flex justify-between items-center rounded-tr-xl">
                                             <h2 className="text-lg font-extrabold uppercase tracking-wide flex items-center gap-2">
-                                                DELIVERIES FOR {dash.riderStats?.find(r => r.rider?._id === riderFilter)?.rider?.name} 
+                                                DELIVERIES FOR {dash.riderStats?.find(r => r.rider?._id === riderFilter)?.rider?.name || 'Rider'} 
                                                 <ExternalLink size={16} className="text-white/80 cursor-pointer"/>
                                             </h2>
                                             <button className="bg-[#243447] text-white p-2 rounded-lg hover:bg-opacity-80 transition-colors shadow-sm">
@@ -798,7 +803,7 @@ export const DeliveryDashboard = () => {
                         <div className="space-y-4">
                             {dash.riderStats?.length > 0 ? (
                                 <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
-                                    {dash.riderStats.map(rs => {
+                                    {(dash.riderStats || []).map(rs => {
                                         const rate = rs.total > 0 ? Math.round((rs.delivered / rs.total) * 100) : 0;
                                         return (
                                             <div key={rs._id} className="bg-white rounded-xl border border-gray-100 shadow-sm p-5 hover:shadow-md transition-all">
