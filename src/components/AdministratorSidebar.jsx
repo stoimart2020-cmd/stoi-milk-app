@@ -77,12 +77,12 @@ export const AdministratorSidebar = ({ className = "", user, collapsed = false }
                     permissionKey: "users",
                     allowedRoles: ["SUPERADMIN", "ADMIN"],
                     children: [
-                        { label: "Customers", href: "/administrator/dashboard/customers", icon: User, permissionKey: "users" },
-                        { label: "Riders", href: "/administrator/dashboard/riders", icon: Bike, allowedRoles: ["SUPERADMIN", "ADMIN", "DELIVERY_MANAGER"], permissionKey: "users" },
-                        { label: "Staffs", href: "/administrator/dashboard/staff", icon: UserCog, allowedRoles: ["SUPERADMIN", "ADMIN"], permissionKey: "users" },
+                        { label: "Customers", href: "/administrator/dashboard/customers", icon: User, permissionKey: "customers" },
+                        { label: "Riders", href: "/administrator/dashboard/riders", icon: Bike, allowedRoles: ["SUPERADMIN", "ADMIN", "DELIVERY_MANAGER"], permissionKey: "riders" },
+                        { label: "Staffs", href: "/administrator/dashboard/staff", icon: UserCog, allowedRoles: ["SUPERADMIN", "ADMIN"], permissionKey: "staff" },
                     ]
                 },
-                { label: "Distributors", href: "/administrator/dashboard/distributors", icon: Store, allowedRoles: ["SUPERADMIN", "ADMIN"], permissionKey: "users" },
+                { label: "Distributors", href: "/administrator/dashboard/distributors", icon: Store, allowedRoles: ["SUPERADMIN", "ADMIN"], permissionKey: "staff" },
                 { label: "Attendance", href: "/administrator/dashboard/attendance", icon: CalendarCheck, allowedRoles: ["SUPERADMIN", "ADMIN", "DELIVERY_MANAGER"], permissionKey: "attendance" },
             ]
         },
@@ -106,9 +106,9 @@ export const AdministratorSidebar = ({ className = "", user, collapsed = false }
             category: "Operations",
             items: [
                 { label: "Logistics", href: "/administrator/dashboard/logistics", icon: Truck, allowedRoles: ["SUPERADMIN", "ADMIN", "HUB_INCHARGE"], permissionKey: "logistics" },
-                { label: "Deliveries", href: "/administrator/dashboard/deliveries", icon: Bike, allowedRoles: ["SUPERADMIN", "ADMIN", "HUB_INCHARGE", "DELIVERY_MANAGER"], permissionKey: "logistics" },
-                { label: "Live Tracking", href: "/administrator/dashboard/live-tracking", icon: MapPin, allowedRoles: ["SUPERADMIN", "ADMIN", "HUB_INCHARGE", "DELIVERY_MANAGER"], permissionKey: "logistics" },
-                { label: "Bottles", href: "/administrator/dashboard/bottles", icon: Milk, allowedRoles: ["SUPERADMIN", "ADMIN", "HUB_INCHARGE"], permissionKey: "logistics" },
+                { label: "Deliveries", href: "/administrator/dashboard/deliveries", icon: Bike, allowedRoles: ["SUPERADMIN", "ADMIN", "HUB_INCHARGE", "DELIVERY_MANAGER"], permissionKey: "deliveries" },
+                { label: "Live Tracking", href: "/administrator/dashboard/live-tracking", icon: MapPin, allowedRoles: ["SUPERADMIN", "ADMIN", "HUB_INCHARGE", "DELIVERY_MANAGER"], permissionKey: "live_tracking" },
+                { label: "Bottles", href: "/administrator/dashboard/bottles", icon: Milk, allowedRoles: ["SUPERADMIN", "ADMIN", "HUB_INCHARGE"], permissionKey: "bottle_management" },
             ]
         },
         {

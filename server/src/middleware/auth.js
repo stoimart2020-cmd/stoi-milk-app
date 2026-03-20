@@ -67,3 +67,62 @@ exports.adminOnly = (req, res, next) => {
         message: 'Admin access required'
     });
 };
+
+/**
+ * Granular Permission Middleware
+ * @param {string} module - e.g., 'customers', 'orders', 'payments'
+ * @param {string} action - 'view', 'add', 'edit', 'delete', 'export'
+ */
+exports.checkPermission = (module, action = 'view') => {
+    return async (req, res, next) => {
+        const user = req.user;
+
+        // 1. Always allow SUPERADMIN
+        if (user.role === 'SUPERADMIN') return next();
+
+        // 2. Not an Admin/Staff? Block.
+        if (user.role === 'CUSTOMER' || user.role === 'USER') {
+            return res.status(403).json({ success: false, message: "Customer access denied to admin module" });
+        }
+
+        // 3. Populate Role if missing
+        if (!user.customRole && user.role !== 'SUPERADMIN') {
+            const Employee = require("../models/Employee");
+            const populatedUser = await Employee.findById(user._id).populate('role');
+            if (populatedUser && populatedUser.role) {
+                user.customRole = populatedUser.role;
+            }
+        }
+
+        // 4. Handle Legacy Roles (Old way: if no custom role, allow if ADMIN)
+        if (!user.customRole) {
+            if (user.role === 'ADMIN') return next();
+            return res.status(403).json({ success: false, message: "Permission denied: No assigned role." });
+        }
+
+        const permissions = user.customRole.permissions || {};
+
+        // 5. Check Dashboard (simple boolean)
+        if (module === 'dashboard') {
+            if (permissions.dashboard === true) return next();
+            return res.status(403).json({ success: false, message: "Dashboard access denied" });
+        }
+
+        // 6. Check Granular Module Permissions
+        const modulePerms = permissions[module];
+
+        // If simple boolean in DB
+        if (typeof modulePerms === 'boolean') {
+            if (modulePerms) return next();
+        } 
+        // If object { view: true, edit: false, ... }
+        else if (modulePerms && modulePerms[action] === true) {
+            return next();
+        }
+
+        return res.status(403).json({
+            success: false,
+            message: `Permission denied: ${action} access to ${module} required.`
+        });
+    };
+};

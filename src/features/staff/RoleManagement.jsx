@@ -7,18 +7,23 @@ import { toast } from "react-hot-toast";
 const MODULES = [
     { key: "dashboard", label: "Dashboard", simple: true }, // Simple boolean
     { key: "hub", label: "Hub Management" },
-    { key: "products", label: "Products" },
-    { key: "categories", label: "Categories" },
-    { key: "customers", label: "Customers" },
-    { key: "orders", label: "Orders" },
-    { key: "invoices", label: "Invoices" },
-    { key: "payments", label: "Payments" },
-    { key: "users", label: "Users & Employees" },
+    { key: "products", label: "Products & Categories" },
+    { key: "orders", label: "Orders (Onetime/Subscription)" },
+    { key: "customers", label: "Customers (Database)" },
+    { key: "riders", label: "Riders (Management)" },
+    { key: "staff", label: "Staff & Employees" },
+    { key: "distributors", label: "Distributors" },
     { key: "roles", label: "Roles & Permissions" },
-    { key: "logistics", label: "Logistics (Factory/Stock)" },
-    { key: "inventory", label: "Inventory (Vendors/Milk)" },
     { key: "attendance", label: "Attendance & Salary" },
-    { key: "settings", label: "Settings" }
+    { key: "inventory", label: "Inventory (Vendors/Milk)" },
+    { key: "deliveries", label: "Deliveries (Daily Ops)" },
+    { key: "live_tracking", label: "Live Tracking" },
+    { key: "bottle_management", label: "Bottle Management" },
+    { key: "invoices", label: "Invoices" },
+    { key: "payments", label: "Payments (Collections)" },
+    { key: "leads", label: "Leads (CRM)" },
+    { key: "complaints", label: "Complaints (Support)" },
+    { key: "settings", label: "Site Settings" }
 ];
 
 const PERMISSIONS = [

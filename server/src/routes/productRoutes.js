@@ -17,30 +17,30 @@ const {
     getProductsByCategory,
     getHomeProducts,
 } = require("../controllers/productController");
-const { protect } = require("../middleware/auth");
+const { protect, checkPermission } = require("../middleware/auth");
 const { uploadMix } = require("../controllers/uploadController");
 
-// Public routes
+// Public routes (Showcase)
 router.get("/home-products", getHomeProducts);
 router.get("/", getAllProducts);
 router.get("/featured", getFeaturedProducts);
-router.get("/low-stock", protect, getLowStockProducts);
 router.get("/category/:categoryId", getProductsByCategory);
 router.get("/slug/:slug", getProductBySlug);
 router.get("/:id", getProductById);
 
 // Protected routes (Admin only)
-router.post("/", protect, uploadMix, createProduct);
-router.put("/bulk", protect, bulkUpdateProducts);
-router.put("/:id", protect, uploadMix, updateProduct);
-router.delete("/:id", protect, deleteProduct);
+router.get("/low-stock", protect, checkPermission('products', 'view'), getLowStockProducts);
+router.post("/", protect, checkPermission('products', 'add'), uploadMix, createProduct);
+router.put("/bulk", protect, checkPermission('products', 'edit'), bulkUpdateProducts);
+router.put("/:id", protect, checkPermission('products', 'edit'), uploadMix, updateProduct);
+router.delete("/:id", protect, checkPermission('products', 'delete'), deleteProduct);
 
 // Variant routes
-router.post("/:id/variant", protect, addVariant);
-router.put("/:id/variant/:variantId", protect, updateVariant);
-router.delete("/:id/variant/:variantId", protect, deleteVariant);
+router.post("/:id/variant", protect, checkPermission('products', 'add'), addVariant);
+router.put("/:id/variant/:variantId", protect, checkPermission('products', 'edit'), updateVariant);
+router.delete("/:id/variant/:variantId", protect, checkPermission('products', 'delete'), deleteVariant);
 
 // Stock routes
-router.put("/:id/stock", protect, updateStock);
+router.put("/:id/stock", protect, checkPermission('products', 'edit'), updateStock);
 
 module.exports = router;

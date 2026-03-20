@@ -1,32 +1,25 @@
 const express = require("express");
 const router = express.Router();
-const { protect, authorize } = require("../middleware/auth");
+const { protect, checkPermission } = require("../middleware/auth");
 const { addPayment, getTransactions, addPaymentPublic, createOrderPublic, verifyPaymentPublic } = require("../controllers/paymentController");
 const { getRazorpayInstance } = require("../utils/razorpay");
-const crypto = require("crypto");
-const User = require("../models/User");
-const Setting = require("../models/Setting"); // Import Setting model
-const { logAction } = require("../controllers/activityLogController");
 
-// Existing routes
-router.post("/", protect, authorize("SUPERADMIN", "ADMIN", "FINANCE_TEAM"), addPayment);
-router.post("/create-link", protect, authorize("SUPERADMIN", "ADMIN", "FINANCE_TEAM"), require("../controllers/paymentController").createPaymentLink);
-router.get("/", protect, authorize("SUPERADMIN", "ADMIN", "FINANCE_TEAM", "CUSTOMER"), getTransactions);
-router.get("/export", protect, authorize("SUPERADMIN", "ADMIN", "FINANCE_TEAM"), require("../controllers/paymentController").exportTransactions);
-router.post("/seed", require("../controllers/paymentController").seedTransactions);
-router.post("/public", addPaymentPublic); // Legacy public add (direct credit) - Should protect or remove if moving fully to gateway, but keeping for now or removing if user asked "remove cash option" which implies forcing gateway.
-// Actually user said "remove cash option and enable payment gateway... now the payment is getting successful without payment"
-// So I should arguably REMOVE addPaymentPublic or change the UI to not use it.
-// I'll keep it as a backend function if needed but the UI will switch to gateway.
+// Staff Routes
+router.post("/", protect, checkPermission('payments', 'add'), addPayment);
+router.post("/create-link", protect, checkPermission('payments', 'add'), require("../controllers/paymentController").createPaymentLink);
+router.get("/", protect, checkPermission('payments', 'view'), getTransactions);
+router.get("/export", protect, checkPermission('payments', 'export'), require("../controllers/paymentController").exportTransactions);
+
+// Admin-only Seed (Super Admin)
+router.post("/seed", protect, checkPermission('settings'), require("../controllers/paymentController").seedTransactions);
+
+// Public / Customer App Routes (No permission needed, just protect if session-based)
+router.post("/public", addPaymentPublic); 
 router.post("/public/create-order", createOrderPublic);
 router.post("/public/verify-payment", verifyPaymentPublic);
 
-// --- New Razorpay Routes ---
-
-// @desc    Create Razorpay Payment Link (for QR)
-// @route   POST /api/payments/create-qr
-// @access  Private
-router.post("/create-qr", protect, async (req, res) => {
+// Razorpay specific (for Riders/Sales creating QR)
+router.post("/create-qr", protect, checkPermission('payments', 'add'), async (req, res) => {
     try {
         const { amount, description, customerId } = req.body;
         if (!amount || amount <= 0) {

@@ -1,19 +1,20 @@
 const express = require("express");
 const router = express.Router();
-const { protect } = require("../middleware/auth");
+const { protect, checkPermission } = require("../middleware/auth");
 const { attachScope } = require("../middleware/scope");
 const { createOrder, getOrders, getAssignedOrders, updateOrderStatus } = require("../controllers/orderController");
 
-router.post("/", protect, createOrder);
-router.get("/", protect, attachScope, getOrders);
-router.get("/assigned", protect, getAssignedOrders);
-router.patch("/:id/status", protect, updateOrderStatus);
-router.patch("/:id/assign", protect, require("../controllers/orderController").assignRider);
-router.post("/bottle-collection", protect, require("../controllers/orderController").createBottleCollectionRequest);
-router.put("/:id", protect, require("../controllers/orderController").updateOrder);
+router.post("/", protect, checkPermission('orders', 'add'), createOrder);
+router.get("/", protect, checkPermission('orders', 'view'), attachScope, getOrders);
+router.get("/assigned", protect, getAssignedOrders); // Allow riders to see their assignments
+router.patch("/:id/status", protect, updateOrderStatus); // Allow status updates for linked delivery
+router.patch("/:id/assign", protect, checkPermission('orders', 'edit'), require("../controllers/orderController").assignRider);
+router.post("/bottle-collection", protect, checkPermission('orders', 'add'), require("../controllers/orderController").createBottleCollectionRequest);
+router.put("/:id", protect, checkPermission('orders', 'edit'), require("../controllers/orderController").updateOrder);
 
 // Manual trigger for testing or recovering missed cron job executions
-router.post("/trigger-cron", async (req, res) => {
+// Limited to SUPERADMIN for safety
+router.post("/trigger-cron", protect, checkPermission('settings'), async (req, res) => {
     try {
         const { targetDate } = req.body || {};
         const { processSubscriptionPayments, autoAssignOrders } = require("../jobs/dynamicCronJobs");

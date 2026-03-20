@@ -1,21 +1,21 @@
 const express = require("express");
 const router = express.Router();
 const { getAllCustomers, createCustomer, getCustomerById, updateCustomer, getCustomerByMobile, getCustomerSummary, getTempOtp, mergeCustomers, uploadCustomers } = require("../controllers/customerController");
-const { protect } = require("../middleware/auth");
+const { protect, checkPermission } = require("../middleware/auth");
 const { attachScope } = require("../middleware/scope");
 
 const multer = require("multer");
 const upload = multer({ storage: multer.memoryStorage() });
 
-router.get("/summary", protect, attachScope, getCustomerSummary);
+router.get("/summary", protect, checkPermission('customers', 'view'), attachScope, getCustomerSummary);
 router.get("/mobile/:mobile", getCustomerByMobile);
-router.get("/", protect, attachScope, getAllCustomers);
-router.post("/merge", protect, mergeCustomers);
+router.get("/", protect, checkPermission('customers', 'view'), attachScope, getAllCustomers);
+router.post("/merge", protect, checkPermission('customers', 'edit'), mergeCustomers);
 
-router.get("/:id", protect, getCustomerById);
-router.get("/:id/temp-otp", protect, getTempOtp);
-router.post("/upload", protect, upload.single("file"), uploadCustomers);
-router.post("/", protect, createCustomer);
-router.put("/:id", protect, updateCustomer);
+router.get("/:id", protect, checkPermission('customers', 'view'), getCustomerById);
+router.get("/:id/temp-otp", protect, checkPermission('customers', 'view'), getTempOtp);
+router.post("/upload", protect, checkPermission('customers', 'add'), upload.single("file"), uploadCustomers);
+router.post("/", protect, checkPermission('customers', 'add'), createCustomer);
+router.put("/:id", protect, checkPermission('customers', 'edit'), updateCustomer);
 
 module.exports = router;
