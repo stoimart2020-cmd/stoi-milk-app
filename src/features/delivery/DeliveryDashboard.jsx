@@ -8,7 +8,8 @@ import { format } from "date-fns";
 import {
     Truck, Package, CheckCircle2, Clock, XCircle, AlertTriangle,
     Users, MapPin, ChevronLeft, ChevronRight, ChevronDown, Send, UserPlus,
-    IndianRupee, TrendingUp, Filter, RefreshCw, Eye, Bike, Zap, Warehouse
+    IndianRupee, TrendingUp, Filter, RefreshCw, Eye, Bike, Zap, Warehouse,
+    MoreVertical, FileText, Edit3, ExternalLink, ArrowLeftRight, Phone
 } from "lucide-react";
 import React from "react";
 import { useFilters } from "../../shared/context/FilterContext";
@@ -111,48 +112,6 @@ export const DeliveryDashboard = () => {
         queryFn: getAllRiders,
     });
 
-    const dash = dashData?.result || {};
-    const stats = dash.stats || {};
-    const orders = ordersData?.result || [];
-    const riders = ridersData?.result || [];
-
-    // --- Order Grouping Logic ---
-    const groupedOrders = useMemo(() => {
-        const grouped = {};
-        orders.forEach(order => {
-            const assignedId = order.assignedRider?._id;
-            let hubId = "unassigned_hub";
-            let hubName = "Unassigned Hub";
-            let riderId = "unassigned_rider";
-            let riderName = "Unassigned Orders";
-
-            if (assignedId) {
-                riderId = assignedId;
-                riderName = order.assignedRider?.name || "Unknown Rider";
-                
-                const fullRiderInfo = riders.find(r => r._id === assignedId);
-                const hub = fullRiderInfo?.hub;
-                if (hub) {
-                    hubId = hub._id || hub;
-                    hubName = hub.name || "Unknown Hub";
-                } else {
-                    hubId = "no_hub";
-                    hubName = "No Hub Assigned";
-                }
-            }
-
-            if (!grouped[hubId]) {
-                grouped[hubId] = { id: hubId, name: hubName, riders: {} };
-            }
-            if (!grouped[hubId].riders[riderId]) {
-                grouped[hubId].riders[riderId] = { id: riderId, name: riderName, orders: [] };
-            }
-            grouped[hubId].riders[riderId].orders.push(order);
-        });
-        return grouped;
-    }, [orders, riders]);
-
-    // --- Mutations ---
     const assignMutation = useMutation({
         mutationFn: bulkAssignRider,
         onSuccess: (data) => {
@@ -186,6 +145,19 @@ export const DeliveryDashboard = () => {
         },
         onError: (err) => toast.error(err.response?.data?.message || "Failed to generate orders"),
     });
+
+    // --- Left Nav Grouping (Hub -> Riders) ---
+    const leftNavData = useMemo(() => {
+        const hubs = {};
+        const allRiderStats = dash.riderStats || [];
+        allRiderStats.forEach(rs => {
+            let hubId = rs.rider?.hub?._id || "unassigned";
+            let hubName = rs.rider?.hub?.name || "Unassigned";
+            if (!hubs[hubId]) hubs[hubId] = { id: hubId, name: hubName, riders: [] };
+            hubs[hubId].riders.push(rs);
+        });
+        return hubs;
+    }, [dash.riderStats]);
 
     // --- Handlers ---
     const shiftDate = (delta) => {
@@ -501,227 +473,228 @@ export const DeliveryDashboard = () => {
                         </div>
                     )}
 
-                    {/* ===== ORDERS TAB ===== */}
+                    {/* ===== ROUTES & DELIVERIES SPLIT TAB ===== */}
                     {activeTab === "orders" && (
-                        <div className="space-y-4">
-                            {/* Filters + Bulk Actions */}
-                            <div className="bg-white rounded-xl border border-gray-100 shadow-sm p-4">
-                                <div className="flex flex-wrap items-center gap-3">
-                                    <div className="flex items-center gap-2">
-                                        <Filter size={16} className="text-gray-400" />
-                                        <select
-                                            value={statusFilter}
-                                            onChange={e => { setStatusFilter(e.target.value); setShowUnassigned(false); }}
-                                            className="px-3 py-1.5 border border-gray-200 rounded-lg text-sm focus:ring-2 focus:ring-teal-500/20 focus:border-teal-500 outline-none"
-                                        >
-                                            <option value="">All Status</option>
-                                            <option value="pending">Pending</option>
-                                            <option value="confirmed">Confirmed</option>
-                                            <option value="pending,confirmed">Pending & Confirmed</option>
-                                            <option value="out_for_delivery">Out for Delivery</option>
-                                            <option value="delivered">Delivered</option>
-                                            <option value="cancelled">Cancelled</option>
-                                        </select>
-                                    </div>
-
-                                    <select
-                                        value={riderFilter}
-                                        onChange={e => setRiderFilter(e.target.value)}
-                                        className="px-3 py-1.5 border border-gray-200 rounded-lg text-sm focus:ring-2 focus:ring-teal-500/20 focus:border-teal-500 outline-none"
-                                    >
-                                        <option value="">All Riders</option>
-                                        {riders.map(r => (
-                                            <option key={r._id} value={r._id}>{r.name}</option>
-                                        ))}
-                                    </select>
-
-                                    <button
-                                        onClick={() => { setShowUnassigned(!showUnassigned); setStatusFilter(""); setRiderFilter(""); }}
-                                        className={`px-3 py-1.5 rounded-lg text-sm font-medium border transition-colors ${showUnassigned
-                                            ? "bg-orange-50 text-orange-700 border-orange-200"
-                                            : "bg-white text-gray-600 border-gray-200 hover:bg-gray-50"
-                                            }`}
-                                    >
-                                        <AlertTriangle size={14} className="inline mr-1" />
-                                        Unassigned
+                        <div className="flex flex-col lg:flex-row gap-6">
+                            
+                            {/* --- LEFT PANE: Active Routes & Drivers --- */}
+                            <div className="lg:w-[380px] flex-shrink-0 space-y-4">
+                                <div className="flex bg-[#fcf9f5] items-center justify-between py-2 px-1 border-b-2 border-teal-500">
+                                    <h2 className="text-lg font-bold text-gray-800">Active Routes & Drivers</h2>
+                                    <button className="px-4 py-1.5 border border-gray-300 rounded-full text-xs font-medium bg-white text-gray-700 shadow-sm hover:bg-gray-50 transition-colors">
+                                        Filter
                                     </button>
-
-                                    <div className="ml-auto flex items-center gap-2">
-                                        <span className="text-xs text-gray-400">{selectedOrders.length} selected</span>
-                                    </div>
                                 </div>
-
-                                {/* Bulk Actions Row */}
-                                {selectedOrders.length > 0 && (
-                                    <div className="flex flex-wrap items-center gap-3 mt-3 pt-3 border-t border-gray-100">
-                                        <div className="flex items-center gap-2">
-                                            <UserPlus size={14} className="text-gray-400" />
-                                            <select
-                                                value={assignRiderId}
-                                                onChange={e => setAssignRiderId(e.target.value)}
-                                                className="px-2 py-1 border border-gray-200 rounded-lg text-sm"
-                                            >
-                                                <option value="">Select Rider</option>
-                                                {riders.map(r => (
-                                                    <option key={r._id} value={r._id}>{r.name}</option>
-                                                ))}
-                                            </select>
-                                            <button
-                                                onClick={handleBulkAssign}
-                                                disabled={!assignRiderId || assignMutation.isPending}
-                                                className="px-3 py-1 bg-teal-600 text-white rounded-lg text-xs font-medium hover:bg-teal-700 disabled:opacity-50 transition-colors"
-                                            >
-                                                Assign ({selectedOrders.length})
-                                            </button>
-                                        </div>
-
-                                        <div className="h-5 w-px bg-gray-200"></div>
-
-                                        <div className="flex items-center gap-1">
-                                            {["confirmed", "out_for_delivery", "delivered"].map(s => (
-                                                <button
-                                                    key={s}
-                                                    onClick={() => handleBulkStatus(s)}
-                                                    className="px-2 py-1 bg-gray-100 hover:bg-gray-200 rounded text-xs font-medium text-gray-600 transition-colors capitalize"
-                                                >
-                                                    → {s.replace("_", " ")}
-                                                </button>
-                                            ))}
-                                        </div>
-                                    </div>
-                                )}
-                            </div>
-
-                            {/* Orders Table */}
-                            <div className="bg-white rounded-xl border border-gray-100 shadow-sm overflow-hidden">
-                                <div className="overflow-x-auto">
-                                    <table className="w-full">
-                                        <thead className="bg-gray-50/50 border-b border-gray-100">
-                                            <tr>
-                                                <th className="px-3 py-3 text-left">
-                                                    <input
-                                                        type="checkbox"
-                                                        checked={orders.length > 0 && selectedOrders.length === orders.length}
-                                                        onChange={toggleAll}
-                                                        className="rounded border-gray-300"
-                                                    />
-                                                </th>
-                                                <th className="px-3 py-3 text-left text-xs font-semibold text-gray-500 uppercase">Order</th>
-                                                <th className="px-3 py-3 text-left text-xs font-semibold text-gray-500 uppercase">Customer</th>
-                                                <th className="px-3 py-3 text-left text-xs font-semibold text-gray-500 uppercase">Products</th>
-                                                <th className="px-3 py-3 text-left text-xs font-semibold text-gray-500 uppercase">Amount</th>
-                                                <th className="px-3 py-3 text-left text-xs font-semibold text-gray-500 uppercase">Status</th>
-                                                <th className="px-3 py-3 text-left text-xs font-semibold text-gray-500 uppercase">Rider</th>
-                                                <th className="px-3 py-3 text-left text-xs font-semibold text-gray-500 uppercase">Payment</th>
-                                            </tr>
-                                        </thead>
-                                        <tbody className="divide-y divide-gray-50">
-                                            {ordersLoading ? (
-                                                <tr><td colSpan="8" className="px-6 py-12 text-center text-gray-400">Loading...</td></tr>
-                                            ) : orders.length === 0 ? (
-                                                <tr><td colSpan="8" className="px-6 py-12 text-center text-gray-400">No orders found</td></tr>
-                                            ) : (
-                                                Object.values(groupedOrders).map(hub => (
-                                                    <React.Fragment key={hub.id}>
-                                                        {/* Hub Header */}
-                                                        <tr 
-                                                            className="bg-gray-100 hover:bg-gray-200 transition-colors border-b border-gray-200 cursor-pointer" 
-                                                            onClick={() => ObjectToggler(setExpandedHubs, hub.id)}
+                                
+                                <div className="space-y-6">
+                                    {Object.values(leftNavData).map(hub => (
+                                        <div key={hub.id}>
+                                            {hub.id !== "unassigned" && (
+                                                <div className="flex items-center gap-2 mb-3 bg-gray-100/50 py-1 px-3 rounded-lg">
+                                                    <Warehouse size={14} className="text-teal-600"/>
+                                                    <h3 className="text-xs font-bold text-gray-600 uppercase tracking-wider">{hub.name}</h3>
+                                                </div>
+                                            )}
+                                            
+                                            <div className="space-y-3">
+                                                {hub.riders.map(rs => {
+                                                    const rate = rs.total > 0 ? ((rs.delivered / rs.total) * 100) : 0;
+                                                    const isCompleted = rs.total > 0 && rs.delivered === rs.total;
+                                                    const isSelected = riderFilter === rs.rider?._id;
+                                                    
+                                                    return (
+                                                        <div 
+                                                            key={rs._id} 
+                                                            onClick={() => { setRiderFilter(rs.rider?._id); setShowUnassigned(false); }}
+                                                            className={`rounded-2xl border bg-white p-5 cursor-pointer relative shadow-sm transition-all duration-200 
+                                                                ${isSelected ? 'border-r-4 border-r-teal-500 border-t-transparent border-l-transparent border-b-transparent shadow-md' : 'border-gray-200 hover:border-teal-200'}`}
                                                         >
-                                                            <td colSpan="8" className="px-3 py-2.5 font-bold text-gray-800">
-                                                                <div className="flex items-center gap-2">
-                                                                    {expandedHubs[hub.id] === false ? <ChevronRight size={18} className="text-gray-500" /> : <ChevronDown size={18} className="text-gray-500" />}
-                                                                    <Warehouse size={18} className="text-teal-600" />
-                                                                    <span>{hub.name}</span>
-                                                                    <span className="text-xs bg-gray-200 text-gray-600 px-2 py-0.5 rounded-full ml-2 font-medium">
-                                                                        {Object.values(hub.riders).reduce((sum, r) => sum + r.orders.length, 0)} orders
-                                                                    </span>
-                                                                </div>
-                                                            </td>
-                                                        </tr>
-
-                                                        {expandedHubs[hub.id] !== false && Object.values(hub.riders).map(rider => (
-                                                            <React.Fragment key={rider.id}>
-                                                                {/* Rider Header */}
-                                                                <tr 
-                                                                    className="bg-teal-50/60 hover:bg-teal-100/60 transition-colors border-b border-teal-100/50 cursor-pointer"
-                                                                    onClick={() => ObjectToggler(setExpandedRiders, `${hub.id}_${rider.id}`)}
-                                                                >
-                                                                    <td colSpan="8" className="px-5 py-2 font-semibold text-teal-800">
-                                                                        <div className="flex items-center gap-2 text-sm">
-                                                                            {expandedRiders[`${hub.id}_${rider.id}`] === false ? <ChevronRight size={16} className="text-teal-500" /> : <ChevronDown size={16} className="text-teal-500" />}
-                                                                            <Bike size={16} className="text-teal-600" />
-                                                                            <span>{rider.name}</span>
-                                                                            <span className="text-xs bg-teal-100 text-teal-700 px-2 py-0.5 rounded-full ml-2 font-medium">
-                                                                                {rider.orders.length} orders
+                                                            <div className="flex items-start justify-between">
+                                                                <div className="flex items-center gap-4">
+                                                                    <div className="w-[50px] h-[50px] rounded-full overflow-hidden bg-gradient-to-br from-[#77db77] to-[#40a940] text-white flex items-center justify-center font-bold text-2xl shadow-inner">
+                                                                        {rs.rider?.name?.charAt(0) || "?"}
+                                                                    </div>
+                                                                    <div>
+                                                                        <div className="flex items-center gap-2 mb-1">
+                                                                            <h4 className="font-bold text-teal-800 text-lg leading-tight">{rs.rider?.name}</h4>
+                                                                            <span className={`text-[10px] px-2.5 py-0.5 rounded-full font-bold shadow-sm ${isCompleted ? 'bg-[#19c786] text-white' : 'bg-[#fba379] text-white'}`}>
+                                                                                {isCompleted ? 'Completed' : 'Pending'}
                                                                             </span>
                                                                         </div>
-                                                                    </td>
-                                                                </tr>
+                                                                        <div className="text-sm text-gray-600 mt-1 flex flex-col gap-1">
+                                                                            <span className="flex items-center gap-1.5"><Phone size={12}/> {rs.rider?.mobile}</span>
+                                                                        </div>
+                                                                    </div>
+                                                                </div>
+                                                                <button className="text-gray-400 hover:text-gray-600"><MoreVertical size={16}/></button>
+                                                            </div>
 
-                                                                {/* Order Rows */}
-                                                                {expandedRiders[`${hub.id}_${rider.id}`] !== false && rider.orders.map(order => (
-                                                                    <tr key={order._id} className={`hover:bg-gray-50/50 transition-colors ${selectedOrders.includes(order._id) ? 'bg-teal-50/30' : ''}`}>
-                                                                        <td className="px-3 py-3 pl-8">
-                                                                            <input
-                                                                                type="checkbox"
-                                                                                checked={selectedOrders.includes(order._id)}
-                                                                                onChange={() => toggleOrder(order._id)}
-                                                                                className="rounded border-gray-300"
-                                                                            />
-                                                                        </td>
-                                                                        <td className="px-3 py-3">
-                                                                            <p className="text-sm font-bold text-gray-800">#{order.orderId || order._id?.slice(-6)}</p>
-                                                                            <p className="text-[10px] text-gray-400">{format(new Date(order.createdAt), "hh:mm a")}</p>
-                                                                        </td>
-                                                                        <td className="px-3 py-3">
-                                                                            <p className="text-sm font-medium text-gray-800">{order.customer?.name || "—"}</p>
-                                                                            <p className="text-[10px] text-gray-400 max-w-[150px] truncate">{order.customer?.address?.fullAddress || order.customer?.mobile}</p>
-                                                                        </td>
-                                                                        <td className="px-3 py-3">
-                                                                            <div className="space-y-0.5">
-                                                                                {order.products?.slice(0, 2).map((p, i) => (
-                                                                                    <p key={i} className="text-xs text-gray-600">
-                                                                                        {p.product?.name || "Product"} × {p.quantity}
-                                                                                    </p>
-                                                                                ))}
-                                                                                {order.products?.length > 2 && (
-                                                                                    <p className="text-[10px] text-gray-400">+{order.products.length - 2} more</p>
-                                                                                )}
-                                                                            </div>
-                                                                        </td>
-                                                                        <td className="px-3 py-3">
-                                                                            <p className="text-sm font-bold text-gray-800">₹{order.totalAmount}</p>
-                                                                        </td>
-                                                                        <td className="px-3 py-3">
-                                                                            <StatusBadge status={order.status} />
-                                                                        </td>
-                                                                        <td className="px-3 py-3">
-                                                                            {/* Rider column kept for uniform grid, but greyed out slightly since we are grouped */}
-                                                                            {order.assignedRider ? (
-                                                                                <span className="text-xs text-gray-500">{order.assignedRider.name}</span>
-                                                                            ) : (
-                                                                                <span className="text-xs text-orange-500 font-medium">Unassigned</span>
-                                                                            )}
-                                                                        </td>
-                                                                        <td className="px-3 py-3">
-                                                                            <span className={`text-xs font-medium ${order.paymentStatus === "paid" ? "text-emerald-600" : "text-gray-500"}`}>
-                                                                                {order.paymentMode || "—"} · {order.paymentStatus}
-                                                                            </span>
-                                                                        </td>
-                                                                    </tr>
-                                                                ))}
-                                                            </React.Fragment>
-                                                        ))}
-                                                    </React.Fragment>
-                                                ))
-                                            )}
-                                        </tbody>
-                                    </table>
+                                                            <div className="mt-5">
+                                                                <div className="flex justify-between items-end mb-1.5">
+                                                                    <span className="text-[11px] text-gray-500 font-medium">Completion Progress</span>
+                                                                    <span className="text-sm font-bold text-gray-800">{Math.round(rate)}%</span>
+                                                                </div>
+                                                                <div className="w-full bg-gray-200 rounded-full h-1.5">
+                                                                    <div className="bg-[#1cc098] h-1.5 rounded-full" style={{ width: `${rate}%` }}></div>
+                                                                </div>
+                                                            </div>
+
+                                                            <div className="mt-4 pt-3 border-t border-gray-100 flex justify-between tracking-tight">
+                                                                <div className="text-center flex-1">
+                                                                    <p className="text-[9px] text-gray-500 font-bold uppercase">Scheduled</p>
+                                                                    <p className="font-bold text-gray-800 text-lg leading-none mt-1">{rs.total}</p>
+                                                                </div>
+                                                                <div className="w-px h-8 bg-gray-200 mx-1 mt-1"></div>
+                                                                <div className="text-center flex-1">
+                                                                    <p className="text-[9px] text-gray-500 font-bold uppercase">Delivered</p>
+                                                                    <p className="font-bold text-[#1cc098] text-lg leading-none mt-1">{rs.delivered}</p>
+                                                                </div>
+                                                                <div className="w-px h-8 bg-gray-200 mx-1 mt-1"></div>
+                                                                <div className="text-center flex-1">
+                                                                    <p className="text-[9px] text-gray-500 font-bold uppercase">Pending</p>
+                                                                    <p className="font-bold text-[#f27424] text-lg leading-none mt-1">{rs.pending}</p>
+                                                                </div>
+                                                                <div className="w-px h-8 bg-gray-200 mx-1 mt-1"></div>
+                                                                <div className="text-center flex-1">
+                                                                    <p className="text-[9px] text-gray-500 font-bold uppercase">Canceled</p>
+                                                                    <p className="font-bold text-[#f27424] text-lg leading-none mt-1">0</p>
+                                                                </div>
+                                                                <div className="w-px h-8 bg-gray-200 mx-1 mt-1"></div>
+                                                                <div className="text-center flex-1">
+                                                                    <p className="text-[9px] text-gray-500 font-bold uppercase">Cash Collecton</p>
+                                                                    <p className="font-bold text-[#1cc098] text-[15px] leading-none mt-1.5">Rs{rs.cashCollected}</p>
+                                                                </div>
+                                                            </div>
+                                                        </div>
+                                                    );
+                                                })}
+                                            </div>
+                                        </div>
+                                    ))}
                                 </div>
-                                {ordersData?.pagination && (
-                                    <div className="px-4 py-3 border-t border-gray-100 text-xs text-gray-400 text-center">
-                                        Showing {orders.length} of {ordersData.pagination.total} orders
+                            </div>
+
+                            {/* --- RIGHT PANE: Delivery List --- */}
+                            <div className="flex-1 bg-[#fcf9f5] rounded-tl-xl rounded-bl-xl border-l-[3px] border-[#2980b9] shadow-sm flex flex-col min-h-[600px] overflow-hidden">
+                                {riderFilter ? (
+                                    <div className="flex flex-col h-full bg-[#eeebeb]">
+                                        <div className="bg-[#177a66] text-white p-4 flex justify-between items-center rounded-tr-xl">
+                                            <h2 className="text-lg font-extrabold uppercase tracking-wide flex items-center gap-2">
+                                                DELIVERIES FOR {dash.riderStats?.find(r => r.rider?._id === riderFilter)?.rider?.name} 
+                                                <ExternalLink size={16} className="text-white/80 cursor-pointer"/>
+                                            </h2>
+                                            <button className="bg-[#243447] text-white p-2 rounded-lg hover:bg-opacity-80 transition-colors shadow-sm">
+                                                <FileText size={16}/>
+                                            </button>
+                                        </div>
+                                        
+                                        <div className="bg-white border-b border-gray-200">
+                                            <div className="flex overflow-x-auto no-scrollbar">
+                                                <button className="px-6 py-3 font-semibold text-gray-600 border-b-[3px] border-[#1cc098] bg-white">Deliveries</button>
+                                                <button className="px-6 py-3 font-semibold text-[#1cc098] hover:text-[#177a66] transition-colors whitespace-nowrap">Delivery Recon</button>
+                                                <button className="px-6 py-3 font-semibold text-[#1cc098] hover:text-[#177a66] transition-colors whitespace-nowrap">Delivery Note</button>
+                                                <button className="px-6 py-3 font-semibold text-[#1cc098] hover:text-[#177a66] transition-colors whitespace-nowrap">Payment</button>
+                                            </div>
+                                        </div>
+
+                                        <div className="p-4 flex-1">
+                                            {ordersLoading && orders.length === 0 ? (
+                                                <div className="text-center py-20 text-gray-400">Loading deliveries...</div>
+                                            ) : orders.length === 0 ? (
+                                                <div className="text-center py-20 bg-white rounded-xl shadow-sm border border-gray-100 text-gray-400">
+                                                    <Package size={32} className="mx-auto mb-2 text-gray-300"/>
+                                                    No deliveries active
+                                                </div>
+                                            ) : (
+                                                <div className="space-y-4">
+                                                    {orders.map(order => (
+                                                        <div key={order._id} className="bg-white rounded-xl border border-gray-200 shadow-sm overflow-hidden pb-4">
+                                                            <div className="px-5 py-4 flex gap-4">
+                                                                <div className="pt-0.5">
+                                                                    <div className="w-[22px] h-[22px] border-2 border-gray-400 rounded-sm cursor-pointer flex items-center justify-center hover:border-teal-500">
+                                                                        {selectedOrders.includes(order._id) && <div className="w-[14px] h-[14px] bg-teal-500"></div>}
+                                                                    </div>
+                                                                </div>
+                                                                <div className="flex-1 min-w-0">
+                                                                    <div className="flex justify-between items-start">
+                                                                        <div>
+                                                                            <h3 className="text-[17px] font-bold text-gray-900 inline-flex items-center gap-2">
+                                                                                {order.customer?.name || "Unknown Customer"}
+                                                                                <span className="bg-[#24bcd3] text-white text-[10px] px-2 py-[2px] rounded-full font-bold">{order.customer?.routeId || order._id.slice(-3)}</span>
+                                                                            </h3>
+                                                                            <p className="text-[13px] text-[#697f8c] mt-0.5 tracking-tight truncate max-w-[300px]">
+                                                                                {order.customer?.address?.fullAddress || "No detailed address provided"}
+                                                                            </p>
+                                                                        </div>
+                                                                        <div className="flex items-center gap-3 text-gray-600">
+                                                                            <span className="text-[13px]">Mobile: <Eye size={18} className="inline ml-1 hover:text-teal-600 cursor-pointer"/></span>
+                                                                            <Edit3 size={18} className="text-[#3c4b57] hover:text-teal-600 cursor-pointer"/>
+                                                                        </div>
+                                                                    </div>
+
+                                                                    {/* Products List */}
+                                                                    <div className="mt-5 space-y-4">
+                                                                        {order.products?.map((p, i) => (
+                                                                            <div key={i} className="bg-[#f0f6f4] rounded-lg">
+                                                                                <div className="p-4 flex items-center justify-between">
+                                                                                    <div className="flex items-center gap-3">
+                                                                                        <div className="w-[42px] h-[42px] bg-[#dcf4e8] rounded-md text-[#177a66] flex items-center justify-center flex-shrink-0">
+                                                                                            <Package size={22}/>
+                                                                                        </div>
+                                                                                        <div>
+                                                                                            <h4 className="font-bold text-black text-[15px]">{p.product?.name}</h4>
+                                                                                            <div className="flex items-center gap-4 mt-1">
+                                                                                                <div className="flex items-center gap-2 text-[13px] font-bold text-[#1cc098]">
+                                                                                                    <span>{p.quantity} {p.product?.unit}</span>
+                                                                                                    <span className="text-gray-800">→</span>
+                                                                                                    <span>{p.quantity} {p.product?.unit}</span>
+                                                                                                </div>
+                                                                                                <span className="bg-[#b3b9bd] text-white text-[9px] px-2.5 py-[3px] rounded-full font-bold uppercase shadow-sm tracking-wider">Daily</span>
+                                                                                            </div>
+                                                                                        </div>
+                                                                                    </div>
+                                                                                    
+                                                                                    <div className="flex items-center gap-6">
+                                                                                        <span className={`${order.status === 'delivered' ? 'bg-[#cbf4db] text-[#1e7647]' : 'bg-gray-200 text-gray-600'} px-3 py-1.5 rounded-full text-[10px] font-bold uppercase tracking-wider shadow-sm`}>
+                                                                                            {order.status}
+                                                                                        </span>
+                                                                                        
+                                                                                        {order.status !== 'delivered' && (
+                                                                                            <div className="text-right">
+                                                                                                <p className="text-[13px] text-gray-500">Bottles:</p>
+                                                                                                <p className="font-bold text-gray-900 text-sm">{order.bottlesIssued || 0}</p>
+                                                                                            </div>
+                                                                                        )}
+                                                                                        
+                                                                                        <div className="flex items-center gap-1.5 text-[#1cc098] font-bold text-xs whitespace-nowrap">
+                                                                                            <Clock size={14}/> {format(new Date(order.createdAt), "hh:mm a")}
+                                                                                        </div>
+                                                                                    </div>
+                                                                                </div>
+                                                                                <div className="bg-[#dcf4e8]/60 border-t border-[#cbf4db] px-4 py-2 flex justify-between items-center text-[11px] rounded-b-lg font-bold">
+                                                                                    <a href="#" className="flex items-center gap-1 text-[#1cc098] hover:text-teal-700 uppercase tracking-wide">
+                                                                                        <MapPin size={12}/> View on Map <ExternalLink size={10}/>
+                                                                                    </a>
+                                                                                    <span className="flex items-center gap-1 text-[#1cc098]">
+                                                                                        <ArrowLeftRight size={12}/> Distance: <span className="font-extrabold text-[#177a66]">-- m</span> from customer
+                                                                                    </span>
+                                                                                </div>
+                                                                            </div>
+                                                                        ))}
+                                                                    </div>
+                                                                </div>
+                                                            </div>
+                                                        </div>
+                                                    ))}
+                                                </div>
+                                            )}
+                                        </div>
+                                    </div>
+                                ) : (
+                                    <div className="flex-1 flex flex-col items-center justify-center text-gray-400 p-12 text-center">
+                                        <Bike size={56} className="mb-4 text-gray-300"/>
+                                        <h3 className="text-xl font-bold text-gray-500 mb-2">No Rider Selected</h3>
+                                        <p className="text-[15px] text-gray-400 max-w-md">Click on a driver card from the active routes panel to view their itemized delivery checklist and performance.</p>
                                     </div>
                                 )}
                             </div>
