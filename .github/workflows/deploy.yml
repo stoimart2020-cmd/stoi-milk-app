@@ -26,4 +26,5 @@ jobs:
             npm install
             npm run build
             cd server && npm install && cd ..
-            pm2 restart all
+            pm2 restart stoi-api --update-env || pm2 start server/src/index.js --name stoi-api
+            pm2 save
