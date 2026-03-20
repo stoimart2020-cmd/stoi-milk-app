@@ -496,48 +496,35 @@ exports.superAdminLogin = async (req, res) => {
             return res.status(200).json({ success: true, token, user });
         }
 
-        // 2. Fallback/Backdoor for "admin" / "admin"
-        if (username === "admin" && password === "admin") {
+        // 2. Fallback: Allow login using recovery credentials from environment variables (ONLY IF SET)
+        const recoveryId = process.env.SUPERADMIN_RECOVERY_ID;
+        const recoveryPassword = process.env.SUPERADMIN_RECOVERY_PASSWORD;
+
+        if (recoveryId && recoveryPassword && username === recoveryId && password === recoveryPassword) {
             let adminUser = await Employee.findOne({ role: "SUPERADMIN" });
 
             if (!adminUser) {
-                // Check if user with default admin mobile exists
-                adminUser = await Employee.findOne({ mobile: "0000000000" });
+                // If no superadmin exists, promote the recovery user or create one
+                adminUser = await Employee.findOne({ mobile: recoveryId }) || 
+                           await Employee.findOne({ email: recoveryId });
 
                 if (adminUser) {
-                    // Promote to SUPERADMIN
                     adminUser.role = "SUPERADMIN";
-                    adminUser.password = "admin"; // Will be hashed
-
-                    // Ensure valid location for 2dsphere index
-                    if (!adminUser.address || !adminUser.address.location || !adminUser.address.location.coordinates || adminUser.address.location.coordinates.length === 0) {
-                        adminUser.address = {
-                            location: {
-                                type: "Point",
-                                coordinates: [77.4119, 8.1833]
-                            }
-                        };
-                    }
-
                     await adminUser.save();
                 } else {
-                    // Create new Super Admin
                     adminUser = await Employee.create({
-                        mobile: "0000000000",
+                        mobile: recoveryId.match(/^\d+$/) ? recoveryId : "0000000000",
+                        email: recoveryId.includes('@') ? recoveryId : undefined,
                         role: "SUPERADMIN",
-                        name: "Super Admin",
-                        password: "admin",
+                        name: "System Recovery Admin",
+                        password: recoveryPassword, // Will be hashed by pre-save hook
                         address: {
-                            location: {
-                                type: "Point",
-                                coordinates: [77.4119, 8.1833] // Default to Nagercoil
-                            }
+                            location: { type: "Point", coordinates: [77.4119, 8.1833] }
                         }
                     });
                 }
             }
 
-            // Always allow login for admin/admin
             const token = generateToken(adminUser._id);
             res.cookie("token", token, { httpOnly: true, path: "/" });
             return res.status(200).json({ success: true, token, user: adminUser });
