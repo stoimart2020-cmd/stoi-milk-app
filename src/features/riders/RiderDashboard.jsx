@@ -628,121 +628,6 @@ export const RiderDashboard = () => {
                 </div>
             )}
 
-            {/* Financial Summary */}
-            <div className="bg-white rounded-xl p-5 shadow-sm border border-gray-100">
-                <h3 className="font-bold text-gray-800 mb-4 flex items-center gap-2">
-                    <Wallet size={18} className="text-teal-600" /> Financial Summary
-                </h3>
-
-                <div className="space-y-4">
-                    <div className="flex justify-between items-center border-b border-gray-50 pb-3">
-                        <div>
-                            <p className="text-sm text-gray-500">Earned Salary</p>
-                            <p className="text-xs text-gray-400">From attendance</p>
-                        </div>
-                        <div className="text-right">
-                            <p className="text-xl font-bold text-teal-600">₹ {financials.earnedSalary || 0}</p>
-                        </div>
-                    </div>
-
-                    {(financials.kmEarnings || 0) > 0 && (
-                        <div className="flex justify-between items-center border-b border-gray-50 pb-3">
-                            <div>
-                                <p className="text-sm text-gray-500">KM Earnings</p>
-                                <p className="text-xs text-gray-400">Per-km charges</p>
-                            </div>
-                            <div className="text-right">
-                                <p className="text-xl font-bold text-blue-600">₹ {financials.kmEarnings || 0}</p>
-                            </div>
-                        </div>
-                    )}
-
-                    <div className="flex justify-between items-center border-b border-gray-50 pb-3">
-                        <div>
-                            <p className="text-sm text-gray-500">Cash In Hand</p>
-                            <p className="text-xs text-gray-400">Collected from customers</p>
-                        </div>
-                        <div className="text-right">
-                            <p className="text-xl font-bold text-orange-600">₹ {financials.cashWithRider || 0}</p>
-                        </div>
-                    </div>
-
-                    <div className="flex justify-between items-center border-b border-gray-50 pb-3">
-                        <div>
-                            <p className="text-sm text-gray-500">Cash Returned to Admin</p>
-                            <p className="text-xs text-gray-400">Already deposited</p>
-                        </div>
-                        <div className="text-right">
-                            <p className="text-xl font-bold text-emerald-600">₹ {financials.totalAdminCollected || 0}</p>
-                        </div>
-                    </div>
-
-                    {(financials.totalAdvancePaid || 0) > 0 && (
-                        <div className="flex justify-between items-center border-b border-gray-50 pb-3">
-                            <div>
-                                <p className="text-sm text-gray-500">Advance Paid</p>
-                                <p className="text-xs text-gray-400">Salary advance received</p>
-                            </div>
-                            <div className="text-right">
-                                <p className="text-xl font-bold text-purple-600">₹ {financials.totalAdvancePaid || 0}</p>
-                            </div>
-                        </div>
-                    )}
-
-                    <div className={`flex justify-between items-center p-3 rounded-lg ${(financials.netPayable || 0) >= 0
-                        ? 'bg-emerald-50 border border-emerald-100'
-                        : 'bg-red-50 border border-red-100'
-                        }`}>
-                        <div>
-                            <p className="text-sm font-bold text-gray-700">
-                                {(financials.netPayable || 0) >= 0 ? 'Amount Due to You' : 'Amount You Owe'}
-                            </p>
-                            <p className="text-xs text-gray-500">
-                                {(financials.netPayable || 0) >= 0
-                                    ? 'Earnings − Cash − Advance = Net'
-                                    : 'Cash collected exceeds salary'}
-                            </p>
-                        </div>
-                        <div className="text-right">
-                            <p className={`text-2xl font-bold ${(financials.netPayable || 0) >= 0 ? 'text-emerald-700' : 'text-red-600'}`}>
-                                ₹ {Math.abs(financials.netPayable || 0)}
-                            </p>
-                        </div>
-                    </div>
-
-                    <div className="flex justify-between items-center">
-                        <div>
-                            <p className="text-sm text-gray-500">Bottles to Return</p>
-                            <p className="text-xs text-gray-400">Collected from customers</p>
-                        </div>
-                        <div className="text-right">
-                            <p className="text-xl font-bold text-blue-600">{stats.bottlesToCollect}</p>
-                        </div>
-                    </div>
-                </div>
-            </div>
-
-            {/* Recent Salary Ledger */}
-            {financials.recentLedger && financials.recentLedger.length > 0 && (
-                <div className="bg-white rounded-xl p-5 shadow-sm border border-gray-100">
-                    <h3 className="font-bold text-gray-800 mb-3 flex items-center gap-2">
-                        <TrendingUp size={18} className="text-indigo-600" /> Recent Activity
-                    </h3>
-                    <div className="space-y-2 max-h-48 overflow-y-auto">
-                        {financials.recentLedger.slice(0, 10).map((entry, i) => (
-                            <div key={i} className="flex justify-between items-center py-2 border-b border-gray-50 last:border-0">
-                                <div>
-                                    <p className="text-sm text-gray-700">{entry.description}</p>
-                                    <p className="text-xs text-gray-400">{new Date(entry.date).toLocaleDateString()}</p>
-                                </div>
-                                <span className={`text-sm font-bold ${entry.amount >= 0 ? 'text-emerald-600' : 'text-red-600'}`}>
-                                    {entry.amount >= 0 ? '+' : ''}₹{entry.amount}
-                                </span>
-                            </div>
-                        ))}
-                    </div>
-                </div>
-            )}
         </div>
     );
 
@@ -1130,6 +1015,121 @@ export const RiderDashboard = () => {
             </div>
 
             {/* Salary Info */}
+            <div className="bg-white rounded-xl p-5 shadow-sm border border-gray-100">
+                <h3 className="font-bold text-gray-800 mb-4 flex items-center gap-2">
+                    <Wallet size={18} className="text-teal-600" /> Financial Summary
+                </h3>
+
+                <div className="space-y-4">
+                    <div className="flex justify-between items-center border-b border-gray-50 pb-3">
+                        <div>
+                            <p className="text-sm text-gray-500">Earned Salary</p>
+                            <p className="text-xs text-gray-400">From attendance</p>
+                        </div>
+                        <div className="text-right">
+                            <p className="text-xl font-bold text-teal-600">₹ {financials.earnedSalary || 0}</p>
+                        </div>
+                    </div>
+
+                    {(financials.kmEarnings || 0) > 0 && (
+                        <div className="flex justify-between items-center border-b border-gray-50 pb-3">
+                            <div>
+                                <p className="text-sm text-gray-500">KM Earnings</p>
+                                <p className="text-xs text-gray-400">Per-km charges</p>
+                            </div>
+                            <div className="text-right">
+                                <p className="text-xl font-bold text-blue-600">₹ {financials.kmEarnings || 0}</p>
+                            </div>
+                        </div>
+                    )}
+
+                    <div className="flex justify-between items-center border-b border-gray-50 pb-3">
+                        <div>
+                            <p className="text-sm text-gray-500">Cash In Hand</p>
+                            <p className="text-xs text-gray-400">Collected from customers</p>
+                        </div>
+                        <div className="text-right">
+                            <p className="text-xl font-bold text-orange-600">₹ {financials.cashWithRider || 0}</p>
+                        </div>
+                    </div>
+
+                    <div className="flex justify-between items-center border-b border-gray-50 pb-3">
+                        <div>
+                            <p className="text-sm text-gray-500">Cash Returned to Admin</p>
+                            <p className="text-xs text-gray-400">Already deposited</p>
+                        </div>
+                        <div className="text-right">
+                            <p className="text-xl font-bold text-emerald-600">₹ {financials.totalAdminCollected || 0}</p>
+                        </div>
+                    </div>
+
+                    {(financials.totalAdvancePaid || 0) > 0 && (
+                        <div className="flex justify-between items-center border-b border-gray-50 pb-3">
+                            <div>
+                                <p className="text-sm text-gray-500">Advance Paid</p>
+                                <p className="text-xs text-gray-400">Salary advance received</p>
+                            </div>
+                            <div className="text-right">
+                                <p className="text-xl font-bold text-purple-600">₹ {financials.totalAdvancePaid || 0}</p>
+                            </div>
+                        </div>
+                    )}
+
+                    <div className={`flex justify-between items-center p-3 rounded-lg ${(financials.netPayable || 0) >= 0
+                        ? 'bg-emerald-50 border border-emerald-100'
+                        : 'bg-red-50 border border-red-100'
+                        }`}>
+                        <div>
+                            <p className="text-sm font-bold text-gray-700">
+                                {(financials.netPayable || 0) >= 0 ? 'Amount Due to You' : 'Amount You Owe'}
+                            </p>
+                            <p className="text-xs text-gray-500">
+                                {(financials.netPayable || 0) >= 0
+                                    ? 'Earnings − Cash − Advance = Net'
+                                    : 'Cash collected exceeds salary'}
+                            </p>
+                        </div>
+                        <div className="text-right">
+                            <p className={`text-2xl font-bold ${(financials.netPayable || 0) >= 0 ? 'text-emerald-700' : 'text-red-600'}`}>
+                                ₹ {Math.abs(financials.netPayable || 0)}
+                            </p>
+                        </div>
+                    </div>
+
+                    <div className="flex justify-between items-center">
+                        <div>
+                            <p className="text-sm text-gray-500">Bottles to Return</p>
+                            <p className="text-xs text-gray-400">Collected from customers</p>
+                        </div>
+                        <div className="text-right">
+                            <p className="text-xl font-bold text-blue-600">{stats.bottlesToCollect}</p>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            {/* Recent Salary Ledger */}
+            {financials.recentLedger && financials.recentLedger.length > 0 && (
+                <div className="bg-white rounded-xl p-5 shadow-sm border border-gray-100">
+                    <h3 className="font-bold text-gray-800 mb-3 flex items-center gap-2">
+                        <TrendingUp size={18} className="text-indigo-600" /> Recent Activity
+                    </h3>
+                    <div className="space-y-2 max-h-48 overflow-y-auto">
+                        {financials.recentLedger.slice(0, 10).map((entry, i) => (
+                            <div key={i} className="flex justify-between items-center py-2 border-b border-gray-50 last:border-0">
+                                <div>
+                                    <p className="text-sm text-gray-700">{entry.description}</p>
+                                    <p className="text-xs text-gray-400">{new Date(entry.date).toLocaleDateString()}</p>
+                                </div>
+                                <span className={`text-sm font-bold ${entry.amount >= 0 ? 'text-emerald-600' : 'text-red-600'}`}>
+                                    {entry.amount >= 0 ? '+' : ''}₹{entry.amount}
+                                </span>
+                            </div>
+                        ))}
+                    </div>
+                </div>
+            )}
+
             {financials.salaryDetails && (
                 <div className="bg-white p-5 rounded-xl shadow-sm border border-gray-100">
                     <h3 className="font-bold text-gray-800 mb-3 flex items-center gap-2">
