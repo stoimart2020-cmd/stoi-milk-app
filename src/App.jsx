@@ -351,6 +351,14 @@ function AppRoute() {
     {
       path: "/rider/dashboard",
       element: ['RIDER', 'ADMIN', 'SUPERADMIN'].includes(currentAdmin?.user?.role) ? (
+        <Navigate to="/rider/dashboard/home" />
+      ) : (
+        <Navigate to="/rider/login" />
+      ),
+    },
+    {
+      path: "/rider/dashboard/:tab",
+      element: ['RIDER', 'ADMIN', 'SUPERADMIN'].includes(currentAdmin?.user?.role) ? (
         <RiderDashboard />
       ) : (
         <Navigate to="/rider/login" />

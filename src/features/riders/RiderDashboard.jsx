@@ -15,11 +15,16 @@ import { RiderCustomersModal } from "./RiderCustomersModal";
 import { axiosInstance } from "../../shared/api/axios";
 import { RiderRouteModal } from "./RiderRouteModal";
 import { RiderDeliveryDetailModal } from "./RiderDeliveryDetailModal";
+import { useParams, useNavigate } from "react-router-dom";
 
 
 
 export const RiderDashboard = () => {
-    const [activeNav, setActiveNav] = useState("home"); // home, deliveries, history, profile
+    const { tab } = useParams();
+    const navigate = useNavigate();
+    const activeNav = tab || "home"; // home, deliveries, history, profile
+    const setActiveNav = (newTab) => { navigate(`/rider/dashboard/${newTab}`); };
+
     const [orderFilter, setOrderFilter] = useState('all'); // all, pending, delivered, cancelled, spot
     const [weather, setWeather] = useState(null);
     const { data: user } = useAuth();
