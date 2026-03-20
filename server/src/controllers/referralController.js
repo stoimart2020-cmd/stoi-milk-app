@@ -207,6 +207,57 @@ const processReferralReward = async (referralId) => {
         referral.status = "completed";
         await referral.save();
 
+        // --- MILESTONE REWARD CHECK ---
+        const referrerId = referral.referrer._id;
+        const referrer = await User.findById(referrerId);
+        if (referrer) {
+            const milestones = [5, 10, 25, 50, 100];
+            const currentTotal = referrer.totalReferrals; // Already updated in previous block
+            
+            for (const m of milestones) {
+                // Check if they hit exactly this milestone AND haven't been rewarded yet
+                const alreadyRewarded = referrer.milestoneRewards?.some(mr => mr.milestone === m && mr.rewarded);
+                
+                if (currentTotal >= m && !alreadyRewarded) {
+                    const milestoneBonus = m === 5 ? 250 : (m === 10 ? 500 : 1000); // Incremental bonuses
+                    
+                    referrer.walletBalance += milestoneBonus;
+                    referrer.milestoneRewards = referrer.milestoneRewards || [];
+                    referrer.milestoneRewards.push({
+                        milestone: m,
+                        rewarded: true,
+                        rewardDate: new Date()
+                    });
+                    
+                    await referrer.save();
+
+                    // Create Milestone Transaction
+                    const Transaction = require("../models/Transaction");
+                    await Transaction.create({
+                        user: referrer._id,
+                        amount: milestoneBonus,
+                        type: "CREDIT",
+                        mode: "ADJUSTMENT",
+                        status: "SUCCESS",
+                        description: `Referral Milestone Bonus (${m} Referrals Hit!)`,
+                        balanceAfter: referrer.walletBalance
+                    });
+
+                    // Notify them
+                    const { createNotification } = require("./notificationController");
+                    await createNotification({
+                        recipient: referrer._id,
+                        title: "🎉 Super Ambassador Reward!",
+                        message: `Congratulations! You've referred ${m} friends. We've added a ₹${milestoneBonus} bonus to your wallet. Keep spreading the word!`,
+                        type: "success",
+                        link: "/dashboard/referrals"
+                    });
+                    
+                    console.log(`[Referral] Milestone ${m} hit for user ${referrer.name}`);
+                }
+            }
+        }
+
         return true;
     } catch (error) {
         console.error("Error processing referral reward:", error);

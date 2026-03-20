@@ -566,6 +566,16 @@ exports.updateOrderStatus = async (req, res) => {
         if (deliveryProofImages && Array.isArray(deliveryProofImages)) order.deliveryProofImages = deliveryProofImages;
 
         if (status === "delivered") {
+            const deliveryCustomer = await User.findById(order.customer._id || order.customer);
+            // Check for Silent Delivery preference
+            const isSilent = deliveryCustomer?.silentDelivery || false;
+            if (isSilent && (!deliveryProofImages || deliveryProofImages.length === 0)) {
+                // We don't block yet, but we'll tag the order for Admin review if no photo
+                order.deliveryNote = (order.deliveryNote || "") + " [Silent Delivery - Photo missing]";
+            } else if (isSilent) {
+                order.deliveryNote = (order.deliveryNote || "") + " [Silent Delivery - Photo provided]";
+            }
+
             const previousStatus = order.paymentStatus;
             order.paymentStatus = "paid";
 
@@ -616,7 +626,7 @@ exports.updateOrderStatus = async (req, res) => {
 
             // --- HANDLE BOTTLE ISSUANCE & RETURN ---
             // Process bottle transactions ONLY if they haven't been processed yet for this order
-            const customer = await User.findById(order.customer._id || order.customer);
+            const customer = deliveryCustomer || await User.findById(order.customer._id || order.customer);
             if (customer && !order.bottlesProcessed) {
                 let balanceChanged = false;
                 const BottleTransaction = require("../models/BottleTransaction");

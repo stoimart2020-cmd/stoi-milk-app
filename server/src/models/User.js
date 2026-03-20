@@ -107,10 +107,20 @@ const userSchema = new mongoose.Schema(
         paymentMode: { type: String, enum: ["Online", "Cash", "UPI"], default: "Online" },
         dateOfBirth: { type: Date },
         tempCustomerStatus: { type: String },
-        referralCode: { type: String, unique: true, sparse: true }, // Auto-generated XXXX##
-        referredBy: { type: mongoose.Schema.Types.ObjectId, ref: "User" }, // Who referred this user
-        totalReferrals: { type: Number, default: 0 }, // Count of successful referrals
-        referralEarnings: { type: Number, default: 0 }, // Total earned from referrals
+
+        // --- Delivery Preferences ---
+        silentDelivery: { type: Boolean, default: false }, // "Don't ring bell" toggle
+
+        // --- Referrals & Growth ---
+        referralCode: { type: String, unique: true, sparse: true },
+        referredBy: { type: mongoose.Schema.Types.ObjectId, ref: "User" },
+        totalReferrals: { type: Number, default: 0 },
+        referralEarnings: { type: Number, default: 0 },
+        milestoneRewards: [{
+            milestone: Number,
+            rewarded: { type: Boolean, default: false },
+            rewardDate: Date
+        }],
         subscribedToNewsletters: { type: Boolean, default: false },
 
         // Status

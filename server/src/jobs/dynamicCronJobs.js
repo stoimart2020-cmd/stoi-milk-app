@@ -191,8 +191,7 @@ const processSubscriptionPayments = async (targetDateOverride = null) => {
                         skippedCount++;
                         continue;
                     }
-                    // Deduct stock (we will save the product later if needed, or save here)
-                    const Product = require("../models/Product");
+                    // Deduct stock atomically
                     await Product.findByIdAndUpdate(sub.product._id, { $inc: { stock: -quantity } });
                 }
 
@@ -394,7 +393,6 @@ const autoAssignOrders = async (targetDateOverride = null) => {
                 });
 
                 assignedCount++;
-                riderIndex++;
 
                 console.log(`[CRON] Order ${order._id} assigned to rider ${rider.name}`);
 
@@ -461,6 +459,68 @@ const initializeCronJobs = async () => {
 };
 
 // Export functions
+// ==========================================
+// LOW BALANCE ALERTS (Runs at 18:00 daily - Before Cutoff)
+// ==========================================
+cron.schedule('0 18 * * *', async () => {
+    console.log('[CRON] Starting Low Balance Auditor at 18:00 IST');
+    try {
+        const tomorrowDate = getTomorrowDate();
+        const tomorrowDateStr = formatDate(tomorrowDate);
+        const tomorrowDayName = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"][tomorrowDate.getDay()];
+
+        // Get all active subscriptions
+        const activeSubs = await Subscription.find({ status: 'active' }).populate('user product');
+        
+        // Map to keep track of total amount required per user
+        const userRequirements = new Map();
+
+        for (const sub of activeSubs) {
+            if (!sub.user || !sub.user.isActive) continue;
+
+            const quantity = await getDeliveryQuantity(sub, tomorrowDateStr, tomorrowDayName);
+            if (quantity <= 0) continue;
+
+            const amountRequired = quantity * sub.product.price;
+            const userId = sub.user._id.toString();
+
+            if (userRequirements.has(userId)) {
+                userRequirements.get(userId).amount += amountRequired;
+            } else {
+                userRequirements.set(userId, {
+                    user: sub.user,
+                    amount: amountRequired
+                });
+            }
+        }
+
+        // Now check if each user has enough balance (plus a small buffer)
+        for (const [userId, data] of userRequirements) {
+            const buffer = 0; // Exactly what's needed for tomorrow
+            if (data.user.walletBalance < (data.amount + buffer)) {
+                console.log(`[CRON] Low Balance Alert for ${data.user.name}: Has ₹${data.user.walletBalance}, Needs ₹${data.amount}`);
+                
+                // 1. App Notification
+                await createNotification({
+                    recipient: data.user._id,
+                    title: "Action Required: Low Wallet Balance",
+                    message: `Your balance (₹${data.user.walletBalance.toFixed(0)}) is too low for tomorrow's order (₹${data.amount.toFixed(0)}). Recharge now to avoid interruption!`,
+                    type: "warning",
+                    link: "/dashboard/recharge"
+                });
+
+                // 2. We can triggers SMS/WhatsApp here via your notification utilities
+                // Send "Low Balance" SMS logic here later if needed
+            }
+        }
+        console.log('[CRON] Low Balance Auditor finished');
+    } catch (error) {
+        console.error('[CRON] Low Balance Auditor failed:', error);
+    }
+}, {
+    timezone: "Asia/Kolkata"
+});
+
 module.exports = {
     initializeCronJobs,
     processSubscriptionPayments,
