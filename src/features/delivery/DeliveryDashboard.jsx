@@ -7,9 +7,10 @@ import toast from "react-hot-toast";
 import { format } from "date-fns";
 import {
     Truck, Package, CheckCircle2, Clock, XCircle, AlertTriangle,
-    Users, MapPin, ChevronLeft, ChevronRight, Send, UserPlus,
-    IndianRupee, TrendingUp, Filter, RefreshCw, Eye, Bike, Zap
+    Users, MapPin, ChevronLeft, ChevronRight, ChevronDown, Send, UserPlus,
+    IndianRupee, TrendingUp, Filter, RefreshCw, Eye, Bike, Zap, Warehouse
 } from "lucide-react";
+import React from "react";
 import { useFilters } from "../../shared/context/FilterContext";
 
 // =============================================
@@ -65,6 +66,12 @@ export const DeliveryDashboard = () => {
     const [showUnassigned, setShowUnassigned] = useState(false);
     const [selectedOrders, setSelectedOrders] = useState([]);
     const [assignRiderId, setAssignRiderId] = useState("");
+    const [expandedHubs, setExpandedHubs] = useState({});
+    const [expandedRiders, setExpandedRiders] = useState({});
+
+    const ObjectToggler = (setter, key) => {
+        setter(prev => ({ ...prev, [key]: prev[key] === false ? true : false })); // Default is true logic unless purely false
+    };
 
     const { filters } = useFilters();
 
@@ -108,6 +115,42 @@ export const DeliveryDashboard = () => {
     const stats = dash.stats || {};
     const orders = ordersData?.result || [];
     const riders = ridersData?.result || [];
+
+    // --- Order Grouping Logic ---
+    const groupedOrders = useMemo(() => {
+        const grouped = {};
+        orders.forEach(order => {
+            const assignedId = order.assignedRider?._id;
+            let hubId = "unassigned_hub";
+            let hubName = "Unassigned Hub";
+            let riderId = "unassigned_rider";
+            let riderName = "Unassigned Orders";
+
+            if (assignedId) {
+                riderId = assignedId;
+                riderName = order.assignedRider?.name || "Unknown Rider";
+                
+                const fullRiderInfo = riders.find(r => r._id === assignedId);
+                const hub = fullRiderInfo?.hub;
+                if (hub) {
+                    hubId = hub._id || hub;
+                    hubName = hub.name || "Unknown Hub";
+                } else {
+                    hubId = "no_hub";
+                    hubName = "No Hub Assigned";
+                }
+            }
+
+            if (!grouped[hubId]) {
+                grouped[hubId] = { id: hubId, name: hubName, riders: {} };
+            }
+            if (!grouped[hubId].riders[riderId]) {
+                grouped[hubId].riders[riderId] = { id: riderId, name: riderName, orders: [] };
+            }
+            grouped[hubId].riders[riderId].orders.push(order);
+        });
+        return grouped;
+    }, [orders, riders]);
 
     // --- Mutations ---
     const assignMutation = useMutation({
@@ -578,60 +621,99 @@ export const DeliveryDashboard = () => {
                                             ) : orders.length === 0 ? (
                                                 <tr><td colSpan="8" className="px-6 py-12 text-center text-gray-400">No orders found</td></tr>
                                             ) : (
-                                                orders.map(order => (
-                                                    <tr key={order._id} className={`hover:bg-gray-50/50 transition-colors ${selectedOrders.includes(order._id) ? 'bg-teal-50/30' : ''}`}>
-                                                        <td className="px-3 py-3">
-                                                            <input
-                                                                type="checkbox"
-                                                                checked={selectedOrders.includes(order._id)}
-                                                                onChange={() => toggleOrder(order._id)}
-                                                                className="rounded border-gray-300"
-                                                            />
-                                                        </td>
-                                                        <td className="px-3 py-3">
-                                                            <p className="text-sm font-bold text-gray-800">#{order.orderId || order._id?.slice(-6)}</p>
-                                                            <p className="text-[10px] text-gray-400">{format(new Date(order.createdAt), "hh:mm a")}</p>
-                                                        </td>
-                                                        <td className="px-3 py-3">
-                                                            <p className="text-sm font-medium text-gray-800">{order.customer?.name || "—"}</p>
-                                                            <p className="text-[10px] text-gray-400 max-w-[150px] truncate">{order.customer?.address?.fullAddress || order.customer?.mobile}</p>
-                                                        </td>
-                                                        <td className="px-3 py-3">
-                                                            <div className="space-y-0.5">
-                                                                {order.products?.slice(0, 2).map((p, i) => (
-                                                                    <p key={i} className="text-xs text-gray-600">
-                                                                        {p.product?.name || "Product"} × {p.quantity}
-                                                                    </p>
-                                                                ))}
-                                                                {order.products?.length > 2 && (
-                                                                    <p className="text-[10px] text-gray-400">+{order.products.length - 2} more</p>
-                                                                )}
-                                                            </div>
-                                                        </td>
-                                                        <td className="px-3 py-3">
-                                                            <p className="text-sm font-bold text-gray-800">₹{order.totalAmount}</p>
-                                                        </td>
-                                                        <td className="px-3 py-3">
-                                                            <StatusBadge status={order.status} />
-                                                        </td>
-                                                        <td className="px-3 py-3">
-                                                            {order.assignedRider ? (
-                                                                <div className="flex items-center gap-1.5">
-                                                                    <div className="w-6 h-6 rounded-full bg-teal-100 text-teal-700 flex items-center justify-center text-[10px] font-bold">
-                                                                        {order.assignedRider.name?.charAt(0)}
-                                                                    </div>
-                                                                    <span className="text-xs text-gray-700">{order.assignedRider.name}</span>
+                                                Object.values(groupedOrders).map(hub => (
+                                                    <React.Fragment key={hub.id}>
+                                                        {/* Hub Header */}
+                                                        <tr 
+                                                            className="bg-gray-100 hover:bg-gray-200 transition-colors border-b border-gray-200 cursor-pointer" 
+                                                            onClick={() => ObjectToggler(setExpandedHubs, hub.id)}
+                                                        >
+                                                            <td colSpan="8" className="px-3 py-2.5 font-bold text-gray-800">
+                                                                <div className="flex items-center gap-2">
+                                                                    {expandedHubs[hub.id] === false ? <ChevronRight size={18} className="text-gray-500" /> : <ChevronDown size={18} className="text-gray-500" />}
+                                                                    <Warehouse size={18} className="text-teal-600" />
+                                                                    <span>{hub.name}</span>
+                                                                    <span className="text-xs bg-gray-200 text-gray-600 px-2 py-0.5 rounded-full ml-2 font-medium">
+                                                                        {Object.values(hub.riders).reduce((sum, r) => sum + r.orders.length, 0)} orders
+                                                                    </span>
                                                                 </div>
-                                                            ) : (
-                                                                <span className="text-xs text-orange-500 font-medium">Unassigned</span>
-                                                            )}
-                                                        </td>
-                                                        <td className="px-3 py-3">
-                                                            <span className={`text-xs font-medium ${order.paymentStatus === "paid" ? "text-emerald-600" : "text-gray-500"}`}>
-                                                                {order.paymentMode || "—"} · {order.paymentStatus}
-                                                            </span>
-                                                        </td>
-                                                    </tr>
+                                                            </td>
+                                                        </tr>
+
+                                                        {expandedHubs[hub.id] !== false && Object.values(hub.riders).map(rider => (
+                                                            <React.Fragment key={rider.id}>
+                                                                {/* Rider Header */}
+                                                                <tr 
+                                                                    className="bg-teal-50/60 hover:bg-teal-100/60 transition-colors border-b border-teal-100/50 cursor-pointer"
+                                                                    onClick={() => ObjectToggler(setExpandedRiders, `${hub.id}_${rider.id}`)}
+                                                                >
+                                                                    <td colSpan="8" className="px-5 py-2 font-semibold text-teal-800">
+                                                                        <div className="flex items-center gap-2 text-sm">
+                                                                            {expandedRiders[`${hub.id}_${rider.id}`] === false ? <ChevronRight size={16} className="text-teal-500" /> : <ChevronDown size={16} className="text-teal-500" />}
+                                                                            <Bike size={16} className="text-teal-600" />
+                                                                            <span>{rider.name}</span>
+                                                                            <span className="text-xs bg-teal-100 text-teal-700 px-2 py-0.5 rounded-full ml-2 font-medium">
+                                                                                {rider.orders.length} orders
+                                                                            </span>
+                                                                        </div>
+                                                                    </td>
+                                                                </tr>
+
+                                                                {/* Order Rows */}
+                                                                {expandedRiders[`${hub.id}_${rider.id}`] !== false && rider.orders.map(order => (
+                                                                    <tr key={order._id} className={`hover:bg-gray-50/50 transition-colors ${selectedOrders.includes(order._id) ? 'bg-teal-50/30' : ''}`}>
+                                                                        <td className="px-3 py-3 pl-8">
+                                                                            <input
+                                                                                type="checkbox"
+                                                                                checked={selectedOrders.includes(order._id)}
+                                                                                onChange={() => toggleOrder(order._id)}
+                                                                                className="rounded border-gray-300"
+                                                                            />
+                                                                        </td>
+                                                                        <td className="px-3 py-3">
+                                                                            <p className="text-sm font-bold text-gray-800">#{order.orderId || order._id?.slice(-6)}</p>
+                                                                            <p className="text-[10px] text-gray-400">{format(new Date(order.createdAt), "hh:mm a")}</p>
+                                                                        </td>
+                                                                        <td className="px-3 py-3">
+                                                                            <p className="text-sm font-medium text-gray-800">{order.customer?.name || "—"}</p>
+                                                                            <p className="text-[10px] text-gray-400 max-w-[150px] truncate">{order.customer?.address?.fullAddress || order.customer?.mobile}</p>
+                                                                        </td>
+                                                                        <td className="px-3 py-3">
+                                                                            <div className="space-y-0.5">
+                                                                                {order.products?.slice(0, 2).map((p, i) => (
+                                                                                    <p key={i} className="text-xs text-gray-600">
+                                                                                        {p.product?.name || "Product"} × {p.quantity}
+                                                                                    </p>
+                                                                                ))}
+                                                                                {order.products?.length > 2 && (
+                                                                                    <p className="text-[10px] text-gray-400">+{order.products.length - 2} more</p>
+                                                                                )}
+                                                                            </div>
+                                                                        </td>
+                                                                        <td className="px-3 py-3">
+                                                                            <p className="text-sm font-bold text-gray-800">₹{order.totalAmount}</p>
+                                                                        </td>
+                                                                        <td className="px-3 py-3">
+                                                                            <StatusBadge status={order.status} />
+                                                                        </td>
+                                                                        <td className="px-3 py-3">
+                                                                            {/* Rider column kept for uniform grid, but greyed out slightly since we are grouped */}
+                                                                            {order.assignedRider ? (
+                                                                                <span className="text-xs text-gray-500">{order.assignedRider.name}</span>
+                                                                            ) : (
+                                                                                <span className="text-xs text-orange-500 font-medium">Unassigned</span>
+                                                                            )}
+                                                                        </td>
+                                                                        <td className="px-3 py-3">
+                                                                            <span className={`text-xs font-medium ${order.paymentStatus === "paid" ? "text-emerald-600" : "text-gray-500"}`}>
+                                                                                {order.paymentMode || "—"} · {order.paymentStatus}
+                                                                            </span>
+                                                                        </td>
+                                                                    </tr>
+                                                                ))}
+                                                            </React.Fragment>
+                                                        ))}
+                                                    </React.Fragment>
                                                 ))
                                             )}
                                         </tbody>
