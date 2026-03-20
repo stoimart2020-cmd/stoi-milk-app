@@ -1,4 +1,5 @@
 import { NavLink, useLocation } from "react-router-dom";
+import { APP_VERSION_FULL } from "../version";
 import { useState, useEffect, useMemo, useRef } from "react";
 import {
     LayoutDashboard,
@@ -437,7 +438,7 @@ export const AdministratorSidebar = ({ className = "", user, collapsed = false }
 
             {!collapsed && !searchQuery && (
                 <div className="p-4 border-t border-gray-800 mt-auto">
-                    <p className="text-xs text-gray-500 text-center">Version 1.2.0-beta</p>
+                    <p className="text-xs text-gray-500 text-center">{APP_VERSION_FULL}</p>
                 </div>
             )}
         </div>

@@ -11,6 +11,7 @@ import {
   initializeFirebase,
 } from "../lib/firebase";
 import { getPublicSettings } from "../lib/api/settings";
+import { APP_VERSION_LABEL } from "../version";
 
 export const Login = () => {
   const [mobile, setMobile] = useState("");
@@ -540,6 +541,7 @@ export const Login = () => {
             </svg>
             Go to Home Page
           </a>
+          <p className="text-[10px] text-gray-400 text-center mt-2">{APP_VERSION_LABEL}</p>
         </div>
       </div>
       <button id="msg91-hidden-btn" className="hidden" aria-hidden="true" />
