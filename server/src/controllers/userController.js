@@ -146,6 +146,14 @@ exports.updateUser = async (req, res) => {
         const { id } = req.params;
         const updates = req.body;
 
+        if (updates.mobile) {
+            const existingUser = await User.findOne({ mobile: updates.mobile, _id: { $ne: id } });
+            const existingEmployee = await Employee.findOne({ mobile: updates.mobile, _id: { $ne: id } });
+            if (existingUser || existingEmployee) {
+                return res.status(400).json({ success: false, message: "A user or staff member with this mobile number already exists." });
+            }
+        }
+
         let user = await User.findById(id);
         if (!user) {
             user = await Employee.findById(id);
@@ -317,10 +325,25 @@ exports.updateUser = async (req, res) => {
         let user = await User.findById(id);
         let employee = await Employee.findById(id);
 
+        // If Employee exists but User not found by same ID, find the shadow User by employee's current mobile
+        if (employee && !user) {
+            user = await User.findOne({ mobile: employee.mobile });
+        }
+
         let primaryRecord = user || employee;
 
         if (!primaryRecord) {
             return res.status(404).json({ success: false, message: "User not found" });
+        }
+
+        // Check for mobile number conflicts if mobile is being changed
+        if (updates.mobile) {
+            const idsToExclude = [user?._id, employee?._id].filter(Boolean);
+            const existingUser = await User.findOne({ mobile: updates.mobile, _id: { $nin: idsToExclude } });
+            const existingEmployee = await Employee.findOne({ mobile: updates.mobile, _id: { $nin: idsToExclude } });
+            if (existingUser || existingEmployee) {
+                return res.status(400).json({ success: false, message: "A user or staff member with this mobile number already exists." });
+            }
         }
 
         const allowedUpdates = [
@@ -335,17 +358,7 @@ exports.updateUser = async (req, res) => {
         // Shared fields to sync across both models if both exist
         const sharedFields = ["name", "mobile", "email", "password", "role", "isActive"];
 
-        // Update User if exists
-        if (user) {
-            allowedUpdates.forEach((field) => {
-                if (updates[field] !== undefined) {
-                    user[field] = updates[field];
-                }
-            });
-            await user.save();
-        }
-
-        // Update Employee if exists
+        // Update Employee first (if exists) since it's the primary record for staff
         if (employee) {
             allowedUpdates.forEach((field) => {
                 if (updates[field] !== undefined) {
@@ -355,7 +368,18 @@ exports.updateUser = async (req, res) => {
             await employee.save();
         }
 
-        res.status(200).json({ success: true, message: "User updated successfully", result: user || employee });
+        // Update shadow User if exists (sync shared fields)
+        if (user) {
+            const fieldsToSync = employee ? sharedFields : allowedUpdates;
+            fieldsToSync.forEach((field) => {
+                if (updates[field] !== undefined) {
+                    user[field] = updates[field];
+                }
+            });
+            await user.save();
+        }
+
+        res.status(200).json({ success: true, message: "User updated successfully", result: employee || user });
     } catch (error) {
         res.status(500).json({ success: false, message: error.message });
     }

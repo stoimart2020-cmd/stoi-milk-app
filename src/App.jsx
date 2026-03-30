@@ -171,7 +171,7 @@ function AppRoute() {
       path: "/administrator/login",
       element: currentAdmin?.user?.role ? (
         currentAdmin.user.role === 'RIDER' ? <Navigate to="/rider/dashboard" /> :
-        currentAdmin.user.role === 'FIELD_MARKETING' ? <Navigate to="/fieldsales/dashboard" /> :
+        ['FIELD_MARKETING', 'FIELD_OFFICER'].includes(currentAdmin.user.role) ? <Navigate to="/fieldsales/dashboard" /> :
         <Navigate to="/administrator/dashboard" />
       ) : (
         <AdministratorLogin />
@@ -179,13 +179,13 @@ function AppRoute() {
     },
     {
       path: "/administrator/dashboard",
-      element: currentAdmin?.user?.role && !['RIDER', 'FIELD_MARKETING'].includes(currentAdmin.user.role) ? (
+      element: currentAdmin?.user?.role && !['RIDER', 'FIELD_MARKETING', 'FIELD_OFFICER'].includes(currentAdmin.user.role) ? (
         <ErrorBoundary>
           <AdministratorDashboard />
         </ErrorBoundary>
       ) : (
         currentAdmin?.user?.role === 'RIDER' ? <Navigate to="/rider/dashboard" /> :
-        currentAdmin?.user?.role === 'FIELD_MARKETING' ? <Navigate to="/fieldsales/dashboard" /> :
+        ['FIELD_MARKETING', 'FIELD_OFFICER'].includes(currentAdmin?.user?.role) ? <Navigate to="/fieldsales/dashboard" /> :
         <Navigate to="/administrator/login" />
       ),
       children: [

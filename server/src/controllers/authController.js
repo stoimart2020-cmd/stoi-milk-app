@@ -47,15 +47,19 @@ exports.sendOtp = async (req, res) => {
 
         // If user is an Employee, ensure they also exist in User collection for dual-role support
         if (user instanceof Employee) {
-            const shadowUser = await User.findById(user._id);
+            let shadowUser = await User.findById(user._id);
             if (!shadowUser) {
-                await User.create({
-                    _id: user._id,
-                    mobile: user.mobile,
-                    name: user.name,
-                    role: user.role,
-                    isActive: true
-                });
+                // Prevent duplicate key error by checking mobile
+                shadowUser = await User.findOne({ mobile: user.mobile });
+                if (!shadowUser) {
+                    await User.create({
+                        _id: user._id,
+                        mobile: user.mobile,
+                        name: user.name,
+                        role: user.role,
+                        isActive: true
+                    });
+                }
             }
         }
 
@@ -174,15 +178,18 @@ exports.msg91WidgetVerify = async (req, res) => {
 
         // Dual-role check for Employee
         if (user instanceof Employee) {
-            const shadowUser = await User.findById(user._id);
+            let shadowUser = await User.findById(user._id);
             if (!shadowUser) {
-                await User.create({
-                    _id: user._id,
-                    mobile: user.mobile,
-                    name: user.name,
-                    role: user.role,
-                    isActive: true
-                });
+                shadowUser = await User.findOne({ mobile: user.mobile });
+                if (!shadowUser) {
+                    await User.create({
+                        _id: user._id,
+                        mobile: user.mobile,
+                        name: user.name,
+                        role: user.role,
+                        isActive: true
+                    });
+                }
             }
         }
 
@@ -290,15 +297,18 @@ exports.verifyOtp = async (req, res) => {
 
         // If user is an Employee, ensure they also exist in User collection for dual-role support
         if (user instanceof Employee) {
-            const shadowUser = await User.findById(user._id);
+            let shadowUser = await User.findById(user._id);
             if (!shadowUser) {
-                await User.create({
-                    _id: user._id,
-                    mobile: user.mobile,
-                    name: user.name,
-                    role: user.role,
-                    isActive: true
-                });
+                shadowUser = await User.findOne({ mobile: user.mobile });
+                if (!shadowUser) {
+                    await User.create({
+                        _id: user._id,
+                        mobile: user.mobile,
+                        name: user.name,
+                        role: user.role,
+                        isActive: true
+                    });
+                }
             }
         }
 
