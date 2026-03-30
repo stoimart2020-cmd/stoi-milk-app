@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect, useRef, useCallback } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { useNavigate } from "react-router-dom";
 import {
@@ -69,6 +69,53 @@ export const FieldSalesDashboard = () => {
     const [editProfileForm, setEditProfileForm] = useState({ name: "", email: "", mobile: "" });
     const [passwordForm, setPasswordForm] = useState({ oldPassword: "", newPassword: "", confirmPassword: "" });
 
+    // --- Browser History Navigation ---
+    const isInitialMount = useRef(true);
+
+    // Push a view state to browser history
+    const navigateTo = useCallback((tab, sub = null, lead = null, profileSub = null) => {
+        const state = { tab, sub, leadId: lead?._id || null, profileSub };
+        window.history.pushState(state, "", `/fieldsales/dashboard`);
+        setActiveTab(tab);
+        setSubView(sub);
+        setSelectedLead(lead);
+        if (profileSub !== undefined) setProfileSubView(profileSub);
+    }, []);
+
+    // Handle browser back/forward
+    useEffect(() => {
+        // Replace current history entry with initial state on mount
+        if (isInitialMount.current) {
+            window.history.replaceState({ tab: "home", sub: null, leadId: null, profileSub: null }, "", `/fieldsales/dashboard`);
+            isInitialMount.current = false;
+        }
+
+        const handlePopState = (event) => {
+            const state = event.state;
+            if (state && state.tab) {
+                setActiveTab(state.tab);
+                setSubView(state.sub || null);
+                setProfileSubView(state.profileSub || null);
+                // For selectedLead, we need to find it from the leads array
+                if (state.leadId) {
+                    const found = leads.find(l => l._id === state.leadId);
+                    setSelectedLead(found || null);
+                } else {
+                    setSelectedLead(null);
+                }
+            } else {
+                // No state = initial page, go to home
+                setActiveTab("home");
+                setSubView(null);
+                setSelectedLead(null);
+                setProfileSubView(null);
+            }
+        };
+
+        window.addEventListener("popstate", handlePopState);
+        return () => window.removeEventListener("popstate", handlePopState);
+    }, [leads]);
+
     // Add Lead form
     const [leadForm, setLeadForm] = useState({
         name: "", mobile: "", email: "", address: "",
@@ -132,7 +179,7 @@ export const FieldSalesDashboard = () => {
             refetchCustomers();
             setLeadForm({ name: "", mobile: "", email: "", address: "" });
             setLeadLocation(null);
-            setSubView(null);
+            window.history.back();
         },
         onError: (err) => {
             toast.error(err.response?.data?.message || "Failed to create lead");
@@ -146,8 +193,7 @@ export const FieldSalesDashboard = () => {
                 `${convertType === "trial" ? "Trial" : "Subscription"} request submitted! Pending admin approval.`
             );
             refetchCustomers();
-            setSubView(null);
-            setSelectedLead(null);
+            window.history.back();
         },
         onError: (err) => {
             toast.error(err.response?.data?.message || "Failed to create");
@@ -171,8 +217,7 @@ export const FieldSalesDashboard = () => {
             return res.data.result;
         },
         onSuccess: (data) => {
-            setSelectedLead(data);
-            setSubView(null);
+            navigateTo("leads", null, data);
             toast.success("Customer found!");
         },
         onError: (err) => {
@@ -185,8 +230,7 @@ export const FieldSalesDashboard = () => {
         onSuccess: (data) => {
             toast.success("Lead updated successfully!");
             refetchCustomers();
-            setSelectedLead(data.result || data);
-            setSubView(null);
+            window.history.back();
         },
         onError: (err) => {
             toast.error(err.response?.data?.message || "Failed to update lead");
@@ -362,7 +406,7 @@ export const FieldSalesDashboard = () => {
                 <h2 className="text-sm font-bold text-gray-500 uppercase tracking-wider mb-3">Quick Actions</h2>
                 <div className="grid grid-cols-2 gap-3">
                     <button
-                        onClick={() => { setActiveTab("leads"); setSubView("add_lead"); }}
+                        onClick={() => navigateTo("leads", "add_lead")}
                         className="bg-white rounded-2xl p-5 shadow-sm border border-gray-100 flex flex-col items-center gap-2 hover:border-teal-300 hover:shadow-md transition-all active:scale-95"
                     >
                         <div className="w-12 h-12 bg-teal-50 rounded-xl flex items-center justify-center text-teal-600">
@@ -371,7 +415,7 @@ export const FieldSalesDashboard = () => {
                         <span className="text-sm font-semibold text-gray-700">Add Lead</span>
                     </button>
                     <button
-                        onClick={() => setActiveTab("leads")}
+                        onClick={() => navigateTo("leads")}
                         className="bg-white rounded-2xl p-5 shadow-sm border border-gray-100 flex flex-col items-center gap-2 hover:border-teal-300 hover:shadow-md transition-all active:scale-95"
                     >
                         <div className="w-12 h-12 bg-blue-50 rounded-xl flex items-center justify-center text-blue-600">
@@ -380,7 +424,7 @@ export const FieldSalesDashboard = () => {
                         <span className="text-sm font-semibold text-gray-700">View Leads</span>
                     </button>
                     <button
-                        onClick={() => { setActiveTab("leads"); setSubView(null); }}
+                        onClick={() => navigateTo("leads")}
                         className="bg-white rounded-2xl p-5 shadow-sm border border-gray-100 flex flex-col items-center gap-2 hover:border-teal-300 hover:shadow-md transition-all active:scale-95"
                     >
                         <div className="w-12 h-12 bg-purple-50 rounded-xl flex items-center justify-center text-purple-600">
@@ -389,7 +433,7 @@ export const FieldSalesDashboard = () => {
                         <span className="text-sm font-semibold text-gray-700">Convert Lead</span>
                     </button>
                     <button
-                        onClick={() => { setActiveTab("leads"); setSubView(null); }}
+                        onClick={() => navigateTo("leads")}
                         className="bg-white rounded-2xl p-5 shadow-sm border border-gray-100 flex flex-col items-center gap-2 hover:border-teal-300 hover:shadow-md transition-all active:scale-95"
                     >
                         <div className="w-12 h-12 bg-amber-50 rounded-xl flex items-center justify-center text-amber-600">
@@ -407,7 +451,7 @@ export const FieldSalesDashboard = () => {
                     {leads.slice(0, 5).map((lead) => (
                         <div
                             key={lead._id}
-                            onClick={() => { setSelectedLead(lead); setActiveTab("leads"); setSubView(null); }}
+                            onClick={() => navigateTo("leads", null, lead)}
                             className="bg-white rounded-xl p-4 shadow-sm border border-gray-100 flex items-center justify-between active:scale-[0.98] transition-transform cursor-pointer"
                         >
                             <div className="flex items-center gap-3">
@@ -436,14 +480,14 @@ export const FieldSalesDashboard = () => {
         <div className="p-4 pb-24 space-y-4">
             <div className="flex items-center justify-between mb-2">
                 <div className="flex items-center gap-3">
-                    <button onClick={() => setSubView(null)} className="btn btn-ghost btn-sm btn-circle">
+                    <button onClick={() => window.history.back()} className="btn btn-ghost btn-sm btn-circle">
                         <ArrowLeft className="w-5 h-5" />
                     </button>
                     <h2 className="text-lg font-bold text-gray-800">
                         {subView === "edit_lead" ? "Edit Lead" : "Add New Lead"}
                     </h2>
                 </div>
-                <button onClick={() => { setSubView(null); setSelectedLead(null); }} className="btn btn-ghost btn-sm btn-circle">
+                <button onClick={() => window.history.back()} className="btn btn-ghost btn-sm btn-circle">
                     <X className="w-5 h-5" />
                 </button>
             </div>
@@ -600,7 +644,7 @@ export const FieldSalesDashboard = () => {
         return (
             <div className="p-4 pb-24 space-y-4">
                 <div className="flex items-center gap-3 mb-2">
-                    <button onClick={() => { setSelectedLead(null); setSubView(null); }} className="btn btn-ghost btn-sm btn-circle">
+                    <button onClick={() => window.history.back()} className="btn btn-ghost btn-sm btn-circle">
                         <ArrowLeft className="w-5 h-5" />
                     </button>
                     <h2 className="text-lg font-bold text-gray-800">Lead Details</h2>
@@ -656,7 +700,7 @@ export const FieldSalesDashboard = () => {
                                 address: selectedLead.address?.fullAddress || "",
                             });
                             setLeadLocation(selectedLead.address?.location?.coordinates || null);
-                            setSubView("edit_lead");
+                            navigateTo("leads", "edit_lead", selectedLead);
                             if (selectedLead.createdBy && selectedLead.createdBy !== user?._id) {
                                 toast("Viewing read-only details", { icon: '👁️' });
                             }
@@ -693,7 +737,7 @@ export const FieldSalesDashboard = () => {
                     </button>
 
                     <button
-                        onClick={() => setSubView("convert")}
+                        onClick={() => navigateTo("leads", "convert", selectedLead)}
                         className="w-full bg-white rounded-2xl p-4 shadow-sm border border-gray-100 flex items-center gap-4 hover:border-teal-300 hover:shadow-md transition-all active:scale-[0.98]"
                     >
                         <div className="w-12 h-12 bg-purple-50 rounded-xl flex items-center justify-center text-purple-600">
@@ -707,7 +751,7 @@ export const FieldSalesDashboard = () => {
                     </button>
 
                     <button
-                        onClick={() => setSubView("payment")}
+                        onClick={() => navigateTo("leads", "payment", selectedLead)}
                         className="w-full bg-white rounded-2xl p-4 shadow-sm border border-gray-100 flex items-center gap-4 hover:border-teal-300 hover:shadow-md transition-all active:scale-[0.98]"
                     >
                         <div className="w-12 h-12 bg-amber-50 rounded-xl flex items-center justify-center text-amber-600">
@@ -741,7 +785,7 @@ export const FieldSalesDashboard = () => {
     const renderConvert = () => (
         <div className="p-4 pb-24 space-y-4">
             <div className="flex items-center gap-3 mb-2">
-                <button onClick={() => setSubView(null)} className="btn btn-ghost btn-sm btn-circle">
+                <button onClick={() => window.history.back()} className="btn btn-ghost btn-sm btn-circle">
                     <ArrowLeft className="w-5 h-5" />
                 </button>
                 <h2 className="text-lg font-bold text-gray-800">
@@ -897,7 +941,7 @@ export const FieldSalesDashboard = () => {
     const renderPayment = () => (
         <div className="p-4 pb-24 space-y-4">
             <div className="flex items-center gap-3 mb-2">
-                <button onClick={() => { setSubView(null); setQrData(null); }} className="btn btn-ghost btn-sm btn-circle">
+                <button onClick={() => { setQrData(null); window.history.back(); }} className="btn btn-ghost btn-sm btn-circle">
                     <ArrowLeft className="w-5 h-5" />
                 </button>
                 <h2 className="text-lg font-bold text-gray-800">Collect Payment</h2>
@@ -1025,7 +1069,7 @@ export const FieldSalesDashboard = () => {
                             <RefreshCw className="w-4 h-4" />
                         </button>
                         <button
-                            onClick={() => setSubView("add_lead")}
+                            onClick={() => navigateTo("leads", "add_lead")}
                             className="btn btn-sm bg-teal-500 text-white border-0 gap-1"
                         >
                             <Plus className="w-4 h-4" /> Add
@@ -1073,7 +1117,7 @@ export const FieldSalesDashboard = () => {
                         filteredLeads.map((lead) => (
                             <div
                                 key={lead._id}
-                                onClick={() => setSelectedLead(lead)}
+                                onClick={() => navigateTo("leads", null, lead)}
                                 className="bg-white rounded-xl p-4 shadow-sm border border-gray-100 flex items-center justify-between active:scale-[0.98] transition-transform cursor-pointer"
                             >
                                 <div className="flex items-center gap-3">
@@ -1110,7 +1154,7 @@ export const FieldSalesDashboard = () => {
             await axiosInstance.put(`/api/users/${user._id}`, editProfileForm);
             toast.success("Profile updated!");
             queryClient.invalidateQueries({ queryKey: ["currentAdmin"] });
-            setProfileSubView(null);
+            window.history.back();
         } catch (err) {
             toast.error(err.response?.data?.message || "Failed to update profile");
         }
@@ -1127,7 +1171,7 @@ export const FieldSalesDashboard = () => {
             await axiosInstance.put(`/api/users/${user._id}`, { password: passwordForm.newPassword });
             toast.success("Password changed!");
             setPasswordForm({ oldPassword: "", newPassword: "", confirmPassword: "" });
-            setProfileSubView(null);
+            window.history.back();
         } catch (err) {
             toast.error(err.response?.data?.message || "Failed to change password");
         }
@@ -1138,10 +1182,10 @@ export const FieldSalesDashboard = () => {
             <div className="p-4 pb-24 space-y-4">
                 <div className="flex items-center justify-between">
                     <div className="flex items-center gap-3">
-                        <button onClick={() => setProfileSubView(null)} className="btn btn-ghost btn-sm btn-circle"><ArrowLeft className="w-5 h-5" /></button>
+                        <button onClick={() => window.history.back()} className="btn btn-ghost btn-sm btn-circle"><ArrowLeft className="w-5 h-5" /></button>
                         <h2 className="text-lg font-bold text-gray-800">Edit Profile</h2>
                     </div>
-                    <button onClick={() => setProfileSubView(null)} className="btn btn-ghost btn-sm btn-circle"><X className="w-5 h-5" /></button>
+                    <button onClick={() => window.history.back()} className="btn btn-ghost btn-sm btn-circle"><X className="w-5 h-5" /></button>
                 </div>
                 {[{ label: "Name", key: "name", type: "text" }, { label: "Email", key: "email", type: "email" }].map(f => (
                     <div key={f.key} className="bg-white rounded-2xl p-4 shadow-sm border border-gray-100">
@@ -1157,10 +1201,10 @@ export const FieldSalesDashboard = () => {
             <div className="p-4 pb-24 space-y-4">
                 <div className="flex items-center justify-between">
                     <div className="flex items-center gap-3">
-                        <button onClick={() => setProfileSubView(null)} className="btn btn-ghost btn-sm btn-circle"><ArrowLeft className="w-5 h-5" /></button>
+                        <button onClick={() => window.history.back()} className="btn btn-ghost btn-sm btn-circle"><ArrowLeft className="w-5 h-5" /></button>
                         <h2 className="text-lg font-bold text-gray-800">Change Password</h2>
                     </div>
-                    <button onClick={() => setProfileSubView(null)} className="btn btn-ghost btn-sm btn-circle"><X className="w-5 h-5" /></button>
+                    <button onClick={() => window.history.back()} className="btn btn-ghost btn-sm btn-circle"><X className="w-5 h-5" /></button>
                 </div>
                 <div className="bg-white rounded-2xl p-4 shadow-sm border border-gray-100">
                     <label className="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-2 block">New Password</label>
@@ -1207,12 +1251,12 @@ export const FieldSalesDashboard = () => {
                 {/* Quick Actions */}
                 <div className="space-y-2">
                     <h3 className="text-xs font-bold text-gray-500 uppercase tracking-wider">Account</h3>
-                    <button onClick={() => { setEditProfileForm({ name: user?.name || "", email: user?.email || "", mobile: user?.mobile || "" }); setProfileSubView("edit_profile"); }} className="w-full bg-white rounded-2xl p-4 shadow-sm border border-gray-100 flex items-center gap-4 active:scale-[0.98] transition-transform">
+                    <button onClick={() => { setEditProfileForm({ name: user?.name || "", email: user?.email || "", mobile: user?.mobile || "" }); navigateTo("profile", null, null, "edit_profile"); }} className="w-full bg-white rounded-2xl p-4 shadow-sm border border-gray-100 flex items-center gap-4 active:scale-[0.98] transition-transform">
                         <div className="w-10 h-10 bg-teal-50 rounded-xl flex items-center justify-center text-teal-600"><Edit className="w-5 h-5" /></div>
                         <div className="text-left"><p className="font-semibold text-gray-800 text-sm">Edit Profile</p><p className="text-xs text-gray-400">Update name, email</p></div>
                         <ChevronRight className="w-4 h-4 text-gray-300 ml-auto" />
                     </button>
-                    <button onClick={() => { setPasswordForm({ oldPassword: "", newPassword: "", confirmPassword: "" }); setProfileSubView("change_password"); }} className="w-full bg-white rounded-2xl p-4 shadow-sm border border-gray-100 flex items-center gap-4 active:scale-[0.98] transition-transform">
+                    <button onClick={() => { setPasswordForm({ oldPassword: "", newPassword: "", confirmPassword: "" }); navigateTo("profile", null, null, "change_password"); }} className="w-full bg-white rounded-2xl p-4 shadow-sm border border-gray-100 flex items-center gap-4 active:scale-[0.98] transition-transform">
                         <div className="w-10 h-10 bg-purple-50 rounded-xl flex items-center justify-center text-purple-600"><Lock className="w-5 h-5" /></div>
                         <div className="text-left"><p className="font-semibold text-gray-800 text-sm">Change Password</p><p className="text-xs text-gray-400">Update login password</p></div>
                         <ChevronRight className="w-4 h-4 text-gray-300 ml-auto" />
@@ -1348,13 +1392,9 @@ export const FieldSalesDashboard = () => {
                             key={tab.key}
                             onClick={() => {
                                 if (tab.key === "add") {
-                                    setActiveTab("leads");
-                                    setSubView("add_lead");
-                                    setSelectedLead(null);
+                                    navigateTo("leads", "add_lead");
                                 } else {
-                                    setActiveTab(tab.key);
-                                    setSubView(null);
-                                    setSelectedLead(null);
+                                    navigateTo(tab.key);
                                 }
                             }}
                             className={`flex-1 flex flex-col items-center py-3 transition-all ${tab.special
