@@ -64,6 +64,40 @@ router.post("/create-qr", protect, checkPermission('payments', 'add'), async (re
     }
 });
 
+// @desc    Check Razorpay Payment Link / QR Status manually
+router.get("/check-status/:linkId", protect, async (req, res) => {
+    try {
+        const { linkId } = req.params;
+        const Transaction = require("../models/Transaction");
+
+        // First check our own DB to see if the webhook already registered it
+        const existingTx = await Transaction.findOne({ pgOrderId: linkId });
+        if (existingTx && existingTx.status === 'SUCCESS') {
+            return res.json({ status: 'success', paid: true, message: 'Payment successfully captured in the system' });
+        }
+
+        // If not in DB, optionally fallback to querying Razorpay API
+        const instance = await getRazorpayInstance();
+        try {
+            const paymentLink = await instance.paymentLink.fetch(linkId);
+            if (paymentLink && paymentLink.status === 'paid') {
+                return res.json({ status: 'success', paid: true, message: 'Payment succeeded (processing in backend)' });
+            }
+            if (paymentLink && paymentLink.status === 'expired') {
+                 return res.json({ status: 'success', paid: false, expired: true, message: 'Payment link has expired' });
+            }
+            return res.json({ status: 'success', paid: false, message: 'Payment pending or not yet completed' });
+        } catch (razorpayErr) {
+            console.error("Check status razorpay fetch err:", razorpayErr.message);
+            // If razorpay check fails, just say pending
+            return res.json({ status: 'success', paid: false, message: 'Payment pending or not found' });
+        }
+    } catch (error) {
+        console.error("Check Status Error:", error);
+        res.status(500).json({ status: 'error', message: error.message });
+    }
+});
+
 // @desc    Razorpay Webhook — auto-credit wallet on payment link or order payment
 // @route   POST /api/payments/webhook
 // @access  Public (verified via signature)

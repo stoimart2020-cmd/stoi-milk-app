@@ -138,6 +138,7 @@ export const FieldSalesDashboard = () => {
     const [paymentMethod, setPaymentMethod] = useState("razorpay"); // "razorpay" | "company_qr"
     const [paymentAmount, setPaymentAmount] = useState(0);
     const [qrData, setQrData] = useState(null);
+    const [paymentStatus, setPaymentStatus] = useState(null); // 'checking' | 'success' | 'pending' | 'failed'
 
     // --- Queries ---
     const { data: customersData, refetch: refetchCustomers } = useQuery({
@@ -206,11 +207,32 @@ export const FieldSalesDashboard = () => {
         mutationFn: createQrCode,
         onSuccess: (data) => {
             setQrData(data.result || data);
+            setPaymentStatus(null);
             toast.success("QR Code generated!");
         },
         onError: (err) => {
             toast.error(err.response?.data?.message || "Failed to generate QR");
         },
+    });
+
+    const verifyPaymentMutation = useMutation({
+        mutationFn: async (linkId) => {
+            const res = await axiosInstance.get(`/api/payments/check-status/${linkId}`);
+            return res.data;
+        },
+        onSuccess: (data) => {
+            if (data.paid) {
+                setPaymentStatus('success');
+                toast.success("Payment Received Successfully!");
+            } else if (data.expired) {
+                setPaymentStatus('failed');
+                toast.error("Payment Link has expired.");
+            } else {
+                setPaymentStatus('pending');
+                toast("Payment not completed yet", { icon: '⏳' });
+            }
+        },
+        onError: () => toast.error("Failed to check status")
     });
 
     const searchCustomerMutation = useMutation({
@@ -943,7 +965,7 @@ export const FieldSalesDashboard = () => {
     const renderPayment = () => (
         <div className="p-4 pb-24 space-y-4">
             <div className="flex items-center gap-3 mb-2">
-                <button onClick={() => { setQrData(null); window.history.back(); }} className="btn btn-ghost btn-sm btn-circle">
+                <button onClick={() => { setQrData(null); setPaymentStatus(null); window.history.back(); }} className="btn btn-ghost btn-sm btn-circle">
                     <ArrowLeft className="w-5 h-5" />
                 </button>
                 <h2 className="text-lg font-bold text-gray-800">Collect Payment</h2>
@@ -1005,33 +1027,59 @@ export const FieldSalesDashboard = () => {
 
                     {/* QR / Payment Link Result */}
                     {qrData && (
-                        <div className="bg-white rounded-2xl p-6 shadow-sm border border-gray-100 text-center space-y-4">
-                            <p className="text-sm font-bold text-gray-700">Payment of ₹{paymentAmount}</p>
-                            {qrData.short_url ? (
-                                <>
-                                    {/* Show QR from API service */}
-                                    <img
-                                        src={`https://api.qrserver.com/v1/create-qr-code/?size=250x250&data=${encodeURIComponent(qrData.short_url)}`}
-                                        alt="Payment QR"
-                                        className="mx-auto w-64 h-64 rounded-xl border border-gray-200 p-2 bg-white"
-                                    />
-                                    <p className="text-xs text-gray-500">Customer can scan this QR or use the link below</p>
-                                    <a
-                                        href={qrData.short_url}
-                                        target="_blank"
-                                        rel="noopener noreferrer"
-                                        className="btn btn-sm bg-blue-500 text-white border-0 gap-1"
-                                    >
-                                        <CreditCard className="w-4 h-4" /> Open Payment Page
-                                    </a>
-                                </>
-                            ) : (
-                                <div className="bg-gray-100 rounded-xl p-8 text-gray-400">
-                                    <QrCode className="w-16 h-16 mx-auto" />
-                                    <p className="mt-2 text-sm">Payment link created — check Razorpay dashboard</p>
+                        <div className={`bg-white rounded-2xl p-6 shadow-sm border text-center space-y-4 ${paymentStatus === 'success' ? 'border-green-400 shadow-green-100' : 'border-gray-100'}`}>
+                            {paymentStatus === 'success' ? (
+                                <div className="py-6">
+                                    <div className="w-20 h-20 bg-green-100 text-green-500 rounded-full flex items-center justify-center mx-auto mb-4">
+                                        <CheckCircle className="w-10 h-10" />
+                                    </div>
+                                    <h3 className="text-xl font-bold text-gray-800">Payment Successful</h3>
+                                    <p className="text-gray-500 mt-1">₹{paymentAmount} collected from {selectedLead?.name}</p>
+                                    <button onClick={() => window.history.back()} className="btn bg-green-500 hover:bg-green-600 text-white w-full mt-6 border-0">
+                                        Done
+                                    </button>
                                 </div>
+                            ) : (
+                                <>
+                                    <p className="text-sm font-bold text-gray-700">Payment of ₹{paymentAmount}</p>
+                                    {qrData.short_url ? (
+                                        <>
+                                            {/* Show QR from API service */}
+                                            <img
+                                                src={`https://api.qrserver.com/v1/create-qr-code/?size=250x250&data=${encodeURIComponent(qrData.short_url)}`}
+                                                alt="Payment QR"
+                                                className="mx-auto w-64 h-64 rounded-xl border border-gray-200 p-2 bg-white"
+                                            />
+                                            <p className="text-xs text-gray-500">Customer can scan this QR or use the link below</p>
+                                            
+                                            <div className="flex gap-2">
+                                                <a
+                                                    href={qrData.short_url}
+                                                    target="_blank"
+                                                    rel="noopener noreferrer"
+                                                    className="btn btn-sm flex-1 bg-blue-50 text-blue-600 border border-blue-200 hover:bg-blue-100"
+                                                >
+                                                    <CreditCard className="w-4 h-4" /> Link
+                                                </a>
+                                                <button
+                                                    onClick={() => verifyPaymentMutation.mutate(qrData.id)}
+                                                    disabled={verifyPaymentMutation.isPending}
+                                                    className="btn btn-sm flex-[2] bg-teal-500 text-white border-0 hover:bg-teal-600"
+                                                >
+                                                    {verifyPaymentMutation.isPending ? <Loader2 className="w-4 h-4 animate-spin" /> : <RefreshCw className="w-4 h-4" />}
+                                                    Verify Status
+                                                </button>
+                                            </div>
+                                        </>
+                                    ) : (
+                                        <div className="bg-gray-100 rounded-xl p-8 text-gray-400">
+                                            <QrCode className="w-16 h-16 mx-auto" />
+                                            <p className="mt-2 text-sm">Payment link created — check Razorpay dashboard</p>
+                                        </div>
+                                    )}
+                                    <p className="text-xs text-gray-400">Ref: {qrData.reference_id || qrData.id || ""}</p>
+                                </>
                             )}
-                            <p className="text-xs text-gray-400">Ref: {qrData.reference_id || qrData.id || ""}</p>
                         </div>
                     )}
                 </>
