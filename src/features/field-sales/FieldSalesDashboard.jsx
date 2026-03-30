@@ -71,6 +71,7 @@ export const FieldSalesDashboard = () => {
 
     // --- Browser History Navigation ---
     const isInitialMount = useRef(true);
+    const leadsRef = useRef([]);
 
     // Push a view state to browser history
     const navigateTo = useCallback((tab, sub = null, lead = null, profileSub = null) => {
@@ -96,9 +97,9 @@ export const FieldSalesDashboard = () => {
                 setActiveTab(state.tab);
                 setSubView(state.sub || null);
                 setProfileSubView(state.profileSub || null);
-                // For selectedLead, we need to find it from the leads array
+                // For selectedLead, find from the leadsRef
                 if (state.leadId) {
-                    const found = leads.find(l => l._id === state.leadId);
+                    const found = leadsRef.current.find(l => l._id === state.leadId);
                     setSelectedLead(found || null);
                 } else {
                     setSelectedLead(null);
@@ -114,7 +115,7 @@ export const FieldSalesDashboard = () => {
 
         window.addEventListener("popstate", handlePopState);
         return () => window.removeEventListener("popstate", handlePopState);
-    }, [leads]);
+    }, []);
 
     // Add Lead form
     const [leadForm, setLeadForm] = useState({
@@ -157,6 +158,7 @@ export const FieldSalesDashboard = () => {
     const leads = customersData?.result?.filter(
         (c) => c.role === "LEAD" || c.role === "CUSTOMER"
     ) || [];
+    leadsRef.current = leads;
 
     const filteredLeads = leads.filter((l) => {
         if (!searchTerm) return true;
