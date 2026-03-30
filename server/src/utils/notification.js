@@ -137,16 +137,25 @@ exports.sendWhatsApp = async (mobile, message, templateData = {}) => {
             const templateName = templateData.templateName;
 
             let payload;
+            let templateParamsArray = [];
 
             if (templateName) {
                 // Template-based WhatsApp message (approved templates only)
+                // Need to parse template variables based on what was passed
+                // For MSG91, template Data is an array of string values
+                if (templateData.params) {
+                    if (Array.isArray(templateData.params)) {
+                        templateParamsArray = templateData.params;
+                    } else if (typeof templateData.params === 'object') {
+                        templateParamsArray = Object.values(templateData.params);
+                    }
+                }
+
                 const components = [];
-                
-                // Build body parameters from templateData.params
-                if (templateData.params && templateData.params.length > 0) {
+                if (templateParamsArray.length > 0) {
                     components.push({
                         type: "body",
-                        parameters: templateData.params.map(p => ({
+                        parameters: templateParamsArray.map(p => ({
                             type: "text",
                             text: String(p)
                         }))
@@ -190,20 +199,27 @@ exports.sendWhatsApp = async (mobile, message, templateData = {}) => {
                         }
                     }
                 );
+                
+                // MSG91 often returns 200 OK but with hasError inside the JSON
+                if (response.data && (response.data.hasError || response.data.type === "error")) {
+                    console.error("[MSG91 WhatsApp Logic Error]:", response.data);
+                    return { success: false, error: response.data.message || JSON.stringify(response.data) };
+                }
+                
                 console.log("[MSG91 WhatsApp Response]:", response.data);
-                return true;
+                return { success: true, data: response.data };
             } catch (waErr) {
-                console.error("[MSG91 WhatsApp Error]:", waErr?.response?.data || waErr.message);
-                return false;
+                console.error("[MSG91 WhatsApp API Error]:", waErr?.response?.data || waErr.message);
+                return { success: false, error: waErr?.response?.data?.message || waErr.message };
             }
         }
 
         // Other providers (Twilio, WATI, Gupshup) — TODO
         console.log(`[WHATSAPP - ${provider}] Provider not yet implemented`);
-        return false;
+        return { success: false, error: "Provider not implemented" };
     } catch (error) {
         console.error("WhatsApp Error:", error.message);
-        return false;
+        return { success: false, error: error.message };
     }
 };
 
@@ -337,9 +353,14 @@ exports.sendWelcome = async (user) => {
 
         // WhatsApp
         if (settings.whatsapp?.enabled) {
-            const template = settings.whatsapp.templates?.welcome || "Welcome to Stoi Milk {name}! We are excited to serve you fresh milk daily.";
-            const message = formatMessage(template, data);
-            await exports.sendWhatsApp(user.mobile, message);
+            const templateName = settings.whatsapp.templates?.welcome;
+            const message = formatMessage("Welcome to Stoi Milk {name}! We are excited to serve you fresh milk daily.", data);
+            
+            // Pass templateName explicitely so MSG91 knows to use the approved template
+            await exports.sendWhatsApp(user.mobile, message, {
+                 templateName: templateName,
+                 params: [user.name] // Passing params as array for MSG91 mapping
+            });
         }
 
         // Email

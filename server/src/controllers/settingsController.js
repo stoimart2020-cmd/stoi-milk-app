@@ -258,12 +258,29 @@ exports.testWhatsApp = async (req, res) => {
             return res.status(400).json({ success: false, message: "WhatsApp is not enabled in settings" });
         }
 
+        const templateName = settings.whatsapp.templates?.welcome;
+        if (!templateName && settings.whatsapp.provider === "msg91") {
+            return res.status(400).json({ 
+                success: false, 
+                message: "Please define a 'Welcome' template in Customer Notifications below first. MSG91 blocks plain text test messages." 
+            });
+        }
+
         console.log(`[Diagnostic] Test WhatsApp to ${mobile} using ${settings.whatsapp.provider}`);
-
         const { sendWhatsApp } = require("../utils/notification");
-        const testMessage = `Hello! This is a test message from ${settings.site?.siteName || "STOI Milk"}. Your WhatsApp integration is working correctly! 🎉`;
+        
+        const testMessage = `Hello! This is a test message from ${settings.site?.siteName || "STOI Milk"}.`;
+        const result = await sendWhatsApp(mobile, testMessage, {
+            templateName: templateName,
+            params: ["Admin Test User"] // Map dummy params for the welcome template
+        });
 
-        await sendWhatsApp(mobile, testMessage);
+        if (!result.success) {
+            return res.status(500).json({ 
+                success: false, 
+                message: `Failed: ${result.error || "Unknown MSG91 error"}` 
+            });
+        }
 
         res.status(200).json({ success: true, message: `Test WhatsApp sent to ${mobile} via ${(settings.whatsapp.provider || "msg91").toUpperCase()}` });
     } catch (error) {
