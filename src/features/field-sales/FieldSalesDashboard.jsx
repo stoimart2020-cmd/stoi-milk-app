@@ -5,7 +5,8 @@ import {
     Home, Users, Plus, User, MapPin, Phone, Mail,
     Search, ChevronRight, CheckCircle, Clock, ArrowLeft,
     QrCode, CreditCard, Package, Calendar, Briefcase,
-    LogOut, RefreshCw, X, Navigation, AlertCircle, Loader2
+    LogOut, RefreshCw, X, Navigation, AlertCircle, Loader2,
+    Edit, Lock, Eye, DollarSign, ClipboardList
 } from "lucide-react";
 import { MapContainer, TileLayer, Marker, useMapEvents, useMap } from "react-leaflet";
 import L from "leaflet";
@@ -63,6 +64,10 @@ export const FieldSalesDashboard = () => {
     const [subView, setSubView] = useState(null); // "add_lead", "convert", "payment"
     const [selectedLead, setSelectedLead] = useState(null);
     const [searchTerm, setSearchTerm] = useState("");
+    const [checkResult, setCheckResult] = useState(null); // { exists, name, role } or null
+    const [profileSubView, setProfileSubView] = useState(null); // "edit_profile" | "change_password"
+    const [editProfileForm, setEditProfileForm] = useState({ name: "", email: "", mobile: "" });
+    const [passwordForm, setPasswordForm] = useState({ oldPassword: "", newPassword: "", confirmPassword: "" });
 
     // Add Lead form
     const [leadForm, setLeadForm] = useState({
@@ -429,13 +434,18 @@ export const FieldSalesDashboard = () => {
 
     const renderAddLead = () => (
         <div className="p-4 pb-24 space-y-4">
-            <div className="flex items-center gap-3 mb-2">
-                <button onClick={() => setSubView(null)} className="btn btn-ghost btn-sm btn-circle">
-                    <ArrowLeft className="w-5 h-5" />
+            <div className="flex items-center justify-between mb-2">
+                <div className="flex items-center gap-3">
+                    <button onClick={() => setSubView(null)} className="btn btn-ghost btn-sm btn-circle">
+                        <ArrowLeft className="w-5 h-5" />
+                    </button>
+                    <h2 className="text-lg font-bold text-gray-800">
+                        {subView === "edit_lead" ? "Edit Lead" : "Add New Lead"}
+                    </h2>
+                </div>
+                <button onClick={() => { setSubView(null); setSelectedLead(null); }} className="btn btn-ghost btn-sm btn-circle">
+                    <X className="w-5 h-5" />
                 </button>
-                <h2 className="text-lg font-bold text-gray-800">
-                    {subView === "edit_lead" ? "Edit Lead" : "Add New Lead"}
-                </h2>
             </div>
 
             <form onSubmit={handleCreateLead} className="space-y-4">
@@ -481,9 +491,9 @@ export const FieldSalesDashboard = () => {
                                 try {
                                     const res = await axiosInstance.get(`/api/users/check-existence?mobile=${leadForm.mobile}`);
                                     if (res.data.exists) {
-                                        toast.success(`Found: ${res.data.result.name} (${res.data.result.role})`, { icon: '🔍' });
+                                        setCheckResult({ exists: true, name: res.data.result.name, role: res.data.result.role });
                                     } else {
-                                        toast.error("Not found in system", { icon: '✅' });
+                                        setCheckResult({ exists: false });
                                     }
                                 } catch (err) {
                                     toast.error("Failed to check existence");
@@ -1095,49 +1105,160 @@ export const FieldSalesDashboard = () => {
         );
     };
 
-    const renderProfile = () => (
-        <div className="p-4 pb-24 space-y-4">
-            <h2 className="text-lg font-bold text-gray-800 mb-2">Profile</h2>
+    const handleUpdateProfile = async () => {
+        try {
+            await axiosInstance.put(`/api/users/${user._id}`, editProfileForm);
+            toast.success("Profile updated!");
+            queryClient.invalidateQueries({ queryKey: ["currentAdmin"] });
+            setProfileSubView(null);
+        } catch (err) {
+            toast.error(err.response?.data?.message || "Failed to update profile");
+        }
+    };
 
-            <div className="bg-gradient-to-br from-teal-500 to-emerald-600 rounded-3xl p-6 text-white shadow-lg text-center">
-                <div className="w-20 h-20 bg-white/20 rounded-full flex items-center justify-center text-3xl font-bold mx-auto mb-3">
-                    {user?.name?.charAt(0) || "F"}
+    const handleChangePassword = async () => {
+        if (passwordForm.newPassword !== passwordForm.confirmPassword) {
+            toast.error("Passwords do not match"); return;
+        }
+        if (passwordForm.newPassword.length < 4) {
+            toast.error("Password must be at least 4 characters"); return;
+        }
+        try {
+            await axiosInstance.put(`/api/users/${user._id}`, { password: passwordForm.newPassword });
+            toast.success("Password changed!");
+            setPasswordForm({ oldPassword: "", newPassword: "", confirmPassword: "" });
+            setProfileSubView(null);
+        } catch (err) {
+            toast.error(err.response?.data?.message || "Failed to change password");
+        }
+    };
+
+    const renderProfile = () => {
+        if (profileSubView === "edit_profile") return (
+            <div className="p-4 pb-24 space-y-4">
+                <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-3">
+                        <button onClick={() => setProfileSubView(null)} className="btn btn-ghost btn-sm btn-circle"><ArrowLeft className="w-5 h-5" /></button>
+                        <h2 className="text-lg font-bold text-gray-800">Edit Profile</h2>
+                    </div>
+                    <button onClick={() => setProfileSubView(null)} className="btn btn-ghost btn-sm btn-circle"><X className="w-5 h-5" /></button>
                 </div>
-                <h3 className="text-xl font-bold">{user?.name || "Field Officer"}</h3>
-                <p className="text-sm opacity-80">{user?.mobile || ""}</p>
-                <span className="badge badge-ghost text-white/80 mt-2">{user?.role || "FIELD_MARKETING"}</span>
+                {[{ label: "Name", key: "name", type: "text" }, { label: "Email", key: "email", type: "email" }].map(f => (
+                    <div key={f.key} className="bg-white rounded-2xl p-4 shadow-sm border border-gray-100">
+                        <label className="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-2 block">{f.label}</label>
+                        <input type={f.type} className="input input-bordered w-full" value={editProfileForm[f.key]} onChange={e => setEditProfileForm({ ...editProfileForm, [f.key]: e.target.value })} />
+                    </div>
+                ))}
+                <button onClick={handleUpdateProfile} className="btn w-full bg-gradient-to-r from-teal-500 to-emerald-500 text-white border-0"><Edit className="w-5 h-5" /> Save Changes</button>
             </div>
+        );
 
-            <div className="bg-white rounded-2xl p-4 shadow-sm border border-gray-100 space-y-3">
-                <div className="flex justify-between text-sm">
-                    <span className="text-gray-500">Email</span>
-                    <span className="text-gray-800 font-medium">{user?.email || "Not set"}</span>
+        if (profileSubView === "change_password") return (
+            <div className="p-4 pb-24 space-y-4">
+                <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-3">
+                        <button onClick={() => setProfileSubView(null)} className="btn btn-ghost btn-sm btn-circle"><ArrowLeft className="w-5 h-5" /></button>
+                        <h2 className="text-lg font-bold text-gray-800">Change Password</h2>
+                    </div>
+                    <button onClick={() => setProfileSubView(null)} className="btn btn-ghost btn-sm btn-circle"><X className="w-5 h-5" /></button>
                 </div>
-                <div className="flex justify-between text-sm">
-                    <span className="text-gray-500">Status</span>
-                    <span className={`font-medium ${user?.isActive ? "text-green-600" : "text-red-500"}`}>
-                        {user?.isActive ? "Active" : "Inactive"}
-                    </span>
+                <div className="bg-white rounded-2xl p-4 shadow-sm border border-gray-100">
+                    <label className="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-2 block">New Password</label>
+                    <input type="password" className="input input-bordered w-full" placeholder="Enter new password" value={passwordForm.newPassword} onChange={e => setPasswordForm({ ...passwordForm, newPassword: e.target.value })} />
                 </div>
-                <div className="flex justify-between text-sm">
-                    <span className="text-gray-500">Joined</span>
-                    <span className="text-gray-800 font-medium">
-                        {user?.createdAt ? new Date(user.createdAt).toLocaleDateString() : "N/A"}
-                    </span>
+                <div className="bg-white rounded-2xl p-4 shadow-sm border border-gray-100">
+                    <label className="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-2 block">Confirm Password</label>
+                    <input type="password" className="input input-bordered w-full" placeholder="Confirm password" value={passwordForm.confirmPassword} onChange={e => setPasswordForm({ ...passwordForm, confirmPassword: e.target.value })} />
                 </div>
+                <button onClick={handleChangePassword} className="btn w-full bg-gradient-to-r from-teal-500 to-emerald-500 text-white border-0"><Lock className="w-5 h-5" /> Update Password</button>
             </div>
+        );
 
-            <button
-                onClick={handleLogout}
-                className="btn w-full btn-outline btn-error gap-2"
-            >
-                <LogOut className="w-5 h-5" /> Logout
-            </button>
-        </div>
-    );
+        // Attendance summary
+        const attendance = user?.attendance || [];
+        const thisMonth = attendance.filter(a => {
+            const d = new Date(a.date);
+            const now = new Date();
+            return d.getMonth() === now.getMonth() && d.getFullYear() === now.getFullYear();
+        });
+        const presentDays = thisMonth.filter(a => a.status === "Present").length;
+        const halfDays = thisMonth.filter(a => a.status === "Half Day").length;
+        const absentDays = thisMonth.filter(a => a.status === "Absent").length;
+
+        return (
+            <div className="p-4 pb-24 space-y-4">
+                <h2 className="text-lg font-bold text-gray-800 mb-2">Profile</h2>
+
+                <div className="bg-gradient-to-br from-teal-500 to-emerald-600 rounded-3xl p-6 text-white shadow-lg text-center">
+                    <div className="w-16 h-16 bg-white/20 rounded-full flex items-center justify-center text-2xl font-bold mx-auto mb-3">
+                        {user?.name?.charAt(0) || "F"}
+                    </div>
+                    <h3 className="text-xl font-bold">{user?.name || "Field Officer"}</h3>
+                    <p className="text-sm opacity-80">{user?.mobile || ""}</p>
+                    <span className="badge badge-ghost text-white/80 mt-2 text-xs">{user?.role || "FIELD_MARKETING"}</span>
+                </div>
+
+                <div className="bg-white rounded-2xl p-4 shadow-sm border border-gray-100 space-y-3">
+                    <div className="flex justify-between text-sm"><span className="text-gray-500">Email</span><span className="text-gray-800 font-medium">{user?.email || "Not set"}</span></div>
+                    <div className="flex justify-between text-sm"><span className="text-gray-500">Status</span><span className={`font-medium ${user?.isActive ? "text-green-600" : "text-red-500"}`}>{user?.isActive ? "Active" : "Inactive"}</span></div>
+                    <div className="flex justify-between text-sm"><span className="text-gray-500">Joined</span><span className="text-gray-800 font-medium">{user?.createdAt ? new Date(user.createdAt).toLocaleDateString() : "N/A"}</span></div>
+                </div>
+
+                {/* Quick Actions */}
+                <div className="space-y-2">
+                    <h3 className="text-xs font-bold text-gray-500 uppercase tracking-wider">Account</h3>
+                    <button onClick={() => { setEditProfileForm({ name: user?.name || "", email: user?.email || "", mobile: user?.mobile || "" }); setProfileSubView("edit_profile"); }} className="w-full bg-white rounded-2xl p-4 shadow-sm border border-gray-100 flex items-center gap-4 active:scale-[0.98] transition-transform">
+                        <div className="w-10 h-10 bg-teal-50 rounded-xl flex items-center justify-center text-teal-600"><Edit className="w-5 h-5" /></div>
+                        <div className="text-left"><p className="font-semibold text-gray-800 text-sm">Edit Profile</p><p className="text-xs text-gray-400">Update name, email</p></div>
+                        <ChevronRight className="w-4 h-4 text-gray-300 ml-auto" />
+                    </button>
+                    <button onClick={() => { setPasswordForm({ oldPassword: "", newPassword: "", confirmPassword: "" }); setProfileSubView("change_password"); }} className="w-full bg-white rounded-2xl p-4 shadow-sm border border-gray-100 flex items-center gap-4 active:scale-[0.98] transition-transform">
+                        <div className="w-10 h-10 bg-purple-50 rounded-xl flex items-center justify-center text-purple-600"><Lock className="w-5 h-5" /></div>
+                        <div className="text-left"><p className="font-semibold text-gray-800 text-sm">Change Password</p><p className="text-xs text-gray-400">Update login password</p></div>
+                        <ChevronRight className="w-4 h-4 text-gray-300 ml-auto" />
+                    </button>
+                </div>
+
+                {/* Attendance This Month */}
+                <div className="space-y-2">
+                    <h3 className="text-xs font-bold text-gray-500 uppercase tracking-wider">Attendance (This Month)</h3>
+                    <div className="grid grid-cols-3 gap-2">
+                        <div className="bg-green-50 rounded-2xl p-3 text-center border border-green-100">
+                            <p className="text-2xl font-bold text-green-600">{presentDays}</p>
+                            <p className="text-xs text-gray-500">Present</p>
+                        </div>
+                        <div className="bg-amber-50 rounded-2xl p-3 text-center border border-amber-100">
+                            <p className="text-2xl font-bold text-amber-600">{halfDays}</p>
+                            <p className="text-xs text-gray-500">Half Day</p>
+                        </div>
+                        <div className="bg-red-50 rounded-2xl p-3 text-center border border-red-100">
+                            <p className="text-2xl font-bold text-red-600">{absentDays}</p>
+                            <p className="text-xs text-gray-500">Absent</p>
+                        </div>
+                    </div>
+                </div>
+
+                {/* Salary Info */}
+                {user?.salaryDetails && (
+                    <div className="space-y-2">
+                        <h3 className="text-xs font-bold text-gray-500 uppercase tracking-wider">Salary Details</h3>
+                        <div className="bg-white rounded-2xl p-4 shadow-sm border border-gray-100 space-y-3">
+                            <div className="flex justify-between text-sm"><span className="text-gray-500">Base Salary</span><span className="text-gray-800 font-bold">₹{user.salaryDetails.salary || 0}</span></div>
+                            <div className="flex justify-between text-sm"><span className="text-gray-500">Salary Type</span><span className="text-gray-800 font-medium">{user.salaryDetails.salaryType || "Monthly"}</span></div>
+                            {user.earnedSalary > 0 && <div className="flex justify-between text-sm"><span className="text-gray-500">Earned So Far</span><span className="text-green-600 font-bold">₹{user.earnedSalary}</span></div>}
+                        </div>
+                    </div>
+                )}
+
+                <button onClick={handleLogout} className="btn w-full btn-outline btn-error gap-2">
+                    <LogOut className="w-5 h-5" /> Logout
+                </button>
+            </div>
+        );
+    };
 
     return (
-        <div className="min-h-screen bg-gray-50 max-w-lg mx-auto relative">
+        <div className="min-h-screen bg-gray-50 w-full max-w-lg mx-auto relative">
             {/* Content */}
             <div className="min-h-screen">
                 {activeTab === "home" && renderHome()}
@@ -1145,8 +1266,77 @@ export const FieldSalesDashboard = () => {
                 {activeTab === "profile" && renderProfile()}
             </div>
 
+            {/* Mobile Check Result Modal */}
+            {checkResult && (
+                <div className="fixed inset-0 bg-black/50 z-[100] flex items-center justify-center p-4" onClick={() => setCheckResult(null)}>
+                    <div
+                        className="bg-white rounded-3xl shadow-2xl w-full max-w-sm p-6 relative animate-[scaleIn_0.2s_ease-out]"
+                        onClick={(e) => e.stopPropagation()}
+                    >
+                        <button
+                            onClick={() => setCheckResult(null)}
+                            className="absolute top-4 right-4 w-8 h-8 rounded-full bg-gray-100 flex items-center justify-center text-gray-500 hover:bg-gray-200 transition-colors"
+                        >
+                            <X className="w-4 h-4" />
+                        </button>
+
+                        <div className="text-center">
+                            <div className={`w-16 h-16 rounded-full flex items-center justify-center mx-auto mb-4 ${
+                                checkResult.exists ? 'bg-amber-100' : 'bg-green-100'
+                            }`}>
+                                {checkResult.exists ? (
+                                    <AlertCircle className="w-8 h-8 text-amber-500" />
+                                ) : (
+                                    <CheckCircle className="w-8 h-8 text-green-500" />
+                                )}
+                            </div>
+
+                            <h3 className="text-lg font-bold text-gray-800 mb-1">
+                                {checkResult.exists ? 'User Found' : 'Not Found'}
+                            </h3>
+
+                            {checkResult.exists ? (
+                                <div className="mt-3 bg-amber-50 border border-amber-200 rounded-2xl p-4">
+                                    <p className="text-sm text-gray-600 mb-2">This mobile number is already registered:</p>
+                                    <div className="flex items-center justify-center gap-3">
+                                        <div className="w-10 h-10 bg-amber-200 rounded-full flex items-center justify-center font-bold text-amber-700 text-lg">
+                                            {checkResult.name?.charAt(0) || '?'}
+                                        </div>
+                                        <div className="text-left">
+                                            <p className="font-semibold text-gray-800">{checkResult.name}</p>
+                                            <span className={`text-xs font-medium px-2 py-0.5 rounded-full ${
+                                                checkResult.role === 'CUSTOMER' ? 'bg-green-100 text-green-700' :
+                                                checkResult.role === 'LEAD' ? 'bg-yellow-100 text-yellow-700' :
+                                                'bg-blue-100 text-blue-700'
+                                            }`}>
+                                                {checkResult.role}
+                                            </span>
+                                        </div>
+                                    </div>
+                                </div>
+                            ) : (
+                                <p className="text-sm text-gray-500 mt-2">
+                                    This mobile number is not registered in the system. You can proceed to create a new lead.
+                                </p>
+                            )}
+
+                            <button
+                                onClick={() => setCheckResult(null)}
+                                className={`btn w-full mt-5 border-0 text-white ${
+                                    checkResult.exists
+                                        ? 'bg-amber-500 hover:bg-amber-600'
+                                        : 'bg-gradient-to-r from-teal-500 to-emerald-500 hover:from-teal-600 hover:to-emerald-600'
+                                }`}
+                            >
+                                {checkResult.exists ? 'Got It' : 'Continue'}
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            )}
+
             {/* Bottom Navigation */}
-            <div className="fixed bottom-0 left-0 right-0 bg-white border-t border-gray-100 shadow-lg z-50">
+            <div className="fixed bottom-0 left-0 right-0 bg-white border-t border-gray-100 shadow-lg z-50" style={{ paddingBottom: 'env(safe-area-inset-bottom, 0px)' }}>
                 <div className="max-w-lg mx-auto flex">
                     {[
                         { key: "home", icon: Home, label: "Home" },

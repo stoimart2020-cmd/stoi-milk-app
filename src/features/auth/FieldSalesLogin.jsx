@@ -31,6 +31,7 @@ export const FieldSalesLogin = () => {
                 toast.success("Login Successful");
                 await queryClient.invalidateQueries({ queryKey: ["user"] });
                 await queryClient.invalidateQueries({ queryKey: ["currentAdmin"] });
+                window.history.replaceState(null, "", window.location.href);
                 navigate("/fieldsales/dashboard", { replace: true });
             } else {
                 toast.error("Access Denied: You are not a Field Sales officer");
