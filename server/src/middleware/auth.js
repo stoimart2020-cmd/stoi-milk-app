@@ -80,7 +80,13 @@ exports.checkPermission = (module, action = 'view') => {
         // 1. Always allow SUPERADMIN
         if (user.role === 'SUPERADMIN') return next();
 
-        // 2. Not an Admin/Staff? Block.
+        // 2. Allow FIELD_MARKETING / FIELD_OFFICER / RIDER for modules they need
+        if (user.role === 'FIELD_MARKETING' || user.role === 'FIELD_OFFICER' || user.role === 'RIDER') {
+            const allowedModules = ['customers', 'payments', 'subscriptions', 'products', 'settings'];
+            if (allowedModules.includes(module)) return next();
+        }
+
+        // 3. Not an Admin/Staff? Block.
         if (user.role === 'CUSTOMER' || user.role === 'USER') {
             return res.status(403).json({ success: false, message: "Customer access denied to admin module" });
         }
