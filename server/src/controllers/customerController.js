@@ -1,5 +1,6 @@
 const User = require("../models/User");
 const { createNotification } = require("./notificationController");
+const { sendWelcome } = require("../utils/notification");
 const { logAction } = require("./activityLogController");
 const { resolveHubs } = require("../utils/logisticsHelper");
 const ServiceArea = require("../models/ServiceArea");
@@ -85,6 +86,10 @@ exports.createCustomer = async (req, res) => {
         }
 
         user = await User.create(customerData);
+        
+        // Trigger Welcome message via SMS/WhatsApp/Email (handled internally based on settings)
+        sendWelcome(user).catch(err => console.error("Could not send welcome message async:", err));
+
         res.status(201).json({ success: true, result: user });
     } catch (error) {
         res.status(500).json({ success: false, message: error.message });
