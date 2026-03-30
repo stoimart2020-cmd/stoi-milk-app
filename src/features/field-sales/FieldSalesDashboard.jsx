@@ -174,6 +174,49 @@ export const FieldSalesDashboard = () => {
     const products = productsData?.result || [];
     const companyQrImage = settingsData?.result?.paymentGateway?.companyQrImage;
 
+    // --- Live Location Tracking (Battery & Data Optimized) ---
+    // Uses periodic sampling instead of constant watchPosition to save battery
+    useEffect(() => {
+        if (!user) return;
+
+        const sendLocationUpdate = () => {
+            if (navigator.geolocation) {
+                // We use getCurrentPosition instead of watchPosition to let the GPS sleep natively
+                navigator.geolocation.getCurrentPosition(
+                    (position) => {
+                        const { latitude, longitude, accuracy, speed, heading } = position.coords;
+                        
+                        // Ignore wildly inaccurate readings (> 300 meters) to avoid rubber-banding
+                        if (accuracy > 300) return;
+
+                        axiosInstance.post("/api/tracking/update-location", {
+                            lat: latitude,
+                            lng: longitude,
+                            accuracy: accuracy || 0,
+                            speed: speed || 0,
+                            heading: heading || 0
+                        }).catch(err => console.error("Field Sales Tracking Error:", err));
+                    },
+                    (err) => console.warn("Field Sales Location Error:", err.message),
+                    { 
+                        enableHighAccuracy: true, // Use GPS for exact location
+                        timeout: 10000,           // Don't hang forever
+                        maximumAge: 60000         // Accept cached location if it's less than 1 min old
+                    }
+                );
+            }
+        };
+
+        // Send an update right away on load
+        sendLocationUpdate();
+
+        // Check again every 2 minutes. 
+        // This is perfectly balanced for live map tracking without draining the phone
+        const intervalId = setInterval(sendLocationUpdate, 2 * 60 * 1000);
+
+        return () => clearInterval(intervalId);
+    }, [user]);
+
     // --- Mutations ---
     const createLeadMutation = useMutation({
         mutationFn: createCustomer,
