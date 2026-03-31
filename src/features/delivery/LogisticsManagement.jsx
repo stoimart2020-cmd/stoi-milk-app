@@ -676,7 +676,7 @@ const RiderLoadingSheets = () => {
         window.print();
     };
 
-    const riderGroups = React.useMemo(() => {
+    const riderGroups = useMemo(() => {
         if (!ordersData?.result) return {};
         const groups = {};
         ordersData.result.forEach(order => {
@@ -873,7 +873,7 @@ const ProductionLog = () => {
     });
 
     // Populate initial state from existing log if found
-    React.useEffect(() => {
+    useEffect(() => {
         if (statusData?.details?.productionLogId) {
             // Need to fetch details perhaps, but we can also use the stock status metrics
             // For now, let's assume we want to enter fresh for the day or we'd need another endpoint
@@ -1080,7 +1080,7 @@ const InventoryReconciliation = () => {
         enabled: !!selectedHub
     });
 
-    const reconData = React.useMemo(() => {
+    const reconData = useMemo(() => {
         if (!selectedHub || !forecastData?.hubs?.[selectedHub]) return [];
         
         const hubForecast = forecastData.hubs[selectedHub].products;
@@ -1118,7 +1118,7 @@ const InventoryReconciliation = () => {
         return Object.values(products);
     }, [selectedHub, forecastData, ordersData]);
 
-    const assetSummary = React.useMemo(() => {
+    const assetSummary = useMemo(() => {
         if (!ordersData?.result) return { issued: 0, returned: 0 };
         return ordersData.result.reduce((acc, o) => ({
             issued: acc.issued + (o.bottlesIssued || 0),
