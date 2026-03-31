@@ -154,26 +154,34 @@ exports.sendWhatsApp = async (mobile, message, templateData = {}) => {
                     }
                 }
 
-                // MSG91 uses to_and_components format (NOT the Meta/Facebook format)
-                const bodyParams = templateParamsArray.map(p => ({
-                    type: "text",
-                    text: String(p)
-                }));
+                // MSG91 specific format based on user's template dump
+                // Uses "messaging_product", "namespace", and "body_1" format
+                // Namespace provided in your template: ab167d3c_3f7d_4c52_a77b_655d48530ea2
+                const namespace = settings.whatsapp?.namespace || "ab167d3c_3f7d_4c52_a77b_655d48530ea2";
+                
+                // Map parameters to body_1, body_2, etc. as per MSG91 requirement
+                const components = {};
+                templateParamsArray.forEach((val, idx) => {
+                    components[`body_${idx + 1}`] = {
+                        type: "text",
+                        value: String(val)
+                    };
+                });
 
                 payload = {
                     integrated_number: integratedNumber,
                     content_type: "template",
                     payload: {
+                        messaging_product: "whatsapp",
                         type: "template",
                         template: {
                             name: templateName,
+                            namespace: namespace,
                             language: { code: "en", policy: "deterministic" },
                             to_and_components: [
                                 {
                                     to: [num],
-                                    components: {
-                                        body: bodyParams.length > 0 ? bodyParams : undefined
-                                    }
+                                    components: components
                                 }
                             ]
                         }
