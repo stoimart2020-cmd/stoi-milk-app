@@ -154,37 +154,40 @@ exports.sendWhatsApp = async (mobile, message, templateData = {}) => {
                     }
                 }
 
-                const components = [];
-                if (templateParamsArray.length > 0) {
-                    components.push({
-                        type: "body",
-                        parameters: templateParamsArray.map(p => ({
-                            type: "text",
-                            text: String(p)
-                        }))
-                    });
-                }
+                // MSG91 uses to_and_components format (NOT the Meta/Facebook format)
+                const bodyParams = templateParamsArray.map(p => ({
+                    type: "text",
+                    text: String(p)
+                }));
 
                 payload = {
                     integrated_number: integratedNumber,
                     content_type: "template",
                     payload: {
-                        to: num,
                         type: "template",
                         template: {
                             name: templateName,
                             language: { code: "en", policy: "deterministic" },
-                            components: components
+                            to_and_components: [
+                                {
+                                    to: [num],
+                                    components: {
+                                        body: bodyParams.length > 0 ? bodyParams : undefined
+                                    }
+                                }
+                            ]
                         }
                     }
                 };
             } else {
+                // Plain text WhatsApp — uses messaging_product format
                 payload = {
                     integrated_number: integratedNumber,
                     content_type: "text",
                     payload: {
-                        to: num,
+                        messaging_product: "whatsapp",
                         type: "text",
+                        to: num,
                         text: { body: message }
                     }
                 };
