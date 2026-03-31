@@ -1,3 +1,54 @@
+const MilkCollection = require("../models/MilkCollection");
+const ProductionLog = require("../models/ProductionLog");
+const Subscription = require("../models/Subscription");
+const Order = require("../models/Order");
+const Product = require("../models/Product");
+
+// --- Helper: Get Daily Demand (Projected) ---
+const getDailyDemand = async (date) => {
+    const checkDate = new Date(date);
+    checkDate.setHours(0, 0, 0, 0);
+    const dayName = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"][checkDate.getDay()];
+
+    const subscriptions = await Subscription.find({
+        status: "active",
+        startDate: { $lte: checkDate },
+        $or: [{ endDate: { $exists: false } }, { endDate: { $gte: checkDate } }]
+    }).populate("product");
+
+    let totalLitersDemand = 0;
+
+    subscriptions.forEach(sub => {
+        let quantity = 0;
+        // Frequency Logic (Simplified duplication from dashboardController)
+        if (sub.frequency === "Daily") quantity = sub.quantity;
+        else if (sub.frequency === "Alternate Days") {
+            const start = new Date(sub.startDate); start.setHours(0, 0, 0, 0);
+            const diff = Math.floor((checkDate - start) / (1000 * 60 * 60 * 24));
+            if (diff % 2 === 0) quantity = sub.quantity;
+            else quantity = sub.alternateQuantity || 0;
+        }
+        else if (sub.frequency === "Weekdays" && checkDate.getDay() >= 1 && checkDate.getDay() <= 5) quantity = sub.quantity;
+        else if (sub.frequency === "Weekends" && (checkDate.getDay() === 0 || checkDate.getDay() === 6)) quantity = sub.quantity;
+        else if (sub.frequency === "Custom") {
+            if (sub.customSchedule && sub.customSchedule.get(dayName)) quantity = sub.customSchedule.get(dayName);
+            else if (sub.customDays && sub.customDays.includes(dayName)) quantity = sub.quantity;
+        }
+
+        // Convert to Liters
+        if (quantity > 0 && sub.product) {
+            let volume = 0.5; // Default 500ml?
+            // Use Product Unit Value
+            if (sub.product.unit === "litre" || sub.product.unit === "l") volume = sub.product.unitValue || 1;
+            else if (sub.product.unit === "ml") volume = (sub.product.unitValue || 500) / 1000;
+
+            totalLitersDemand += (quantity * volume);
+        }
+    });
+
+    return totalLitersDemand;
+};
+
 // --- Advanced: Logistics Forecast (Hub & Product Breakdown) ---
 exports.getLogisticsForecast = async (req, res) => {
     try {
