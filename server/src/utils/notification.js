@@ -3,7 +3,7 @@ const { admin } = require("../config/firebase");
 const nodemailer = require("nodemailer");
 
 // Generic Email Sender
-exports.sendEmail = async (to, subject, html) => {
+exports.sendEmail = async (to, subject, html, attachments = []) => {
     if (!to) return { success: false, error: "Recipient email missing" };
     try {
         const settings = await Settings.getSettings();
@@ -21,10 +21,9 @@ exports.sendEmail = async (to, subject, html) => {
                 pass: settings.email.password,
             },
             tls: {
-                // Do not fail on invalid certs (common for cPanel testing/self-signed)
                 rejectUnauthorized: false
             },
-            connectionTimeout: 10000, // 10 seconds
+            connectionTimeout: 10000, 
         });
 
         const mailOptions = {
@@ -32,10 +31,11 @@ exports.sendEmail = async (to, subject, html) => {
             to,
             subject,
             html,
+            attachments // Array of { filename, content, contentType }
         };
 
         const info = await transporter.sendMail(mailOptions);
-        console.log(`[EMAIL SENT] To: ${to}, MsgID: ${info.messageId}`);
+        console.log(`[EMAIL SENT] To: ${to}, MsgID: ${info.messageId}, Attachments: ${attachments.length}`);
         return { success: true, messageId: info.messageId };
     } catch (error) {
         console.error("Email Failed:", error.message);
@@ -701,7 +701,7 @@ exports.sendInvoiceNotification = async (user, order) => {
     }
 };
 
-exports.sendMonthlyInvoiceNotification = async (user, invoice) => {
+exports.sendMonthlyInvoiceNotification = async (user, invoice, pdfBuffer = null) => {
     try {
         const settings = await Settings.getSettings();
 
@@ -756,13 +756,23 @@ exports.sendMonthlyInvoiceNotification = async (user, invoice) => {
                             <p style="margin: 5px 0;"><strong>Closing Balance:</strong> <span style="color: ${data.closingBalance >= 0 ? '#0d9488' : '#e11d48'}">₹${data.closingBalance?.toFixed(2)}</span></p>
                         </div>
 
-                        <p>You can view the detailed breakdown and download the PDF by logging into your account.</p>
+                        <p>Attached is your GST-compliant monthly statement for your records.</p>
                         <p>Thank you for being a valued customer of ${settings.site.siteName}!</p>
                         <p>Best Regards,<br/>Team ${settings.site.siteName}</p>
                     </div>
                 `;
             }
-            await exports.sendEmail(user.email, subject, html);
+
+            const attachments = [];
+            if (pdfBuffer) {
+                attachments.push({
+                    filename: `Invoice_${data.statementNo}.pdf`,
+                    content: pdfBuffer,
+                    contentType: 'application/pdf'
+                });
+            }
+
+            await exports.sendEmail(user.email, subject, html, attachments);
         }
     } catch (error) {
         console.error("Monthly Invoice Notification Error:", error.message);

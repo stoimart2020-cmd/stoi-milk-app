@@ -101,6 +101,7 @@ const productSchema = new mongoose.Schema(
         },
         unit: { type: String, default: "piece" }, // piece, kg, litre, etc.
         unitValue: { type: Number, default: 1 }, // e.g., 500 for 500ml
+        unitsPerCrate: { type: Number, default: 12 }, // e.g., 12 bottles per crate
 
         // Product Type
         productType: {

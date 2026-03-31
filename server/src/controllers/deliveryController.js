@@ -212,7 +212,7 @@ exports.getDeliveryOrders = async (req, res) => {
 
         const orders = await Order.find(query)
             .populate("customer", "name mobile address area serviceArea")
-            .populate("products.product", "name price unit")
+            .populate("products.product", "name price unit unitsPerCrate")
             .populate("assignedRider", "name mobile")
             .sort({ status: 1, createdAt: -1 })
             .skip((page - 1) * limit)

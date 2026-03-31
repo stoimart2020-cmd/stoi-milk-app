@@ -225,3 +225,21 @@ export const getBottleLifecycleReport = async () => {
     const res = await axiosInstance.get("/api/bottles/lifecycle-report");
     return res.data;
 };
+
+// ========================
+// LOGISTICS FORECAST API
+// --- Inventory & Production Logs ---
+export const getLogisticsForecast = async (params) => {
+    const response = await axiosInstance.get('/api/inventory/forecast', { params });
+    return response.data;
+};
+
+export const getDailyStockStatus = async (date) => {
+    const response = await axiosInstance.get('/api/inventory/status', { params: { date } });
+    return response.data;
+};
+
+export const addProductionLog = async (data) => {
+    const response = await axiosInstance.post('/api/inventory/log', data);
+    return response.data;
+};

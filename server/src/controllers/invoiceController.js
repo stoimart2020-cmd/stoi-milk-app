@@ -1,5 +1,7 @@
 const Invoice = require('../models/Invoice');
 const User = require('../models/User');
+const Settings = require('../models/Settings');
+const { generateInvoicePDF } = require('../utils/pdfGenerator');
 const { sendMonthlyInvoiceNotification } = require('../utils/notification');
 
 // @desc    Get all invoices (Admin)
@@ -287,15 +289,19 @@ exports.processMonthlyGeneration = async (referenceDate = new Date()) => {
                     transactions: txRows
                 });
 
-                // --- AUTOMATIC MONTHLY INVOICE NOTIFICATION ---
+                // --- AUTOMATIC MONTHLY INVOICE NOTIFICATION WITH PDF ---
                 try {
-                    await sendMonthlyInvoiceNotification(customer, invoice);
+                    const settings = await Settings.getSettings();
+                    const pdfBuffer = await generateInvoicePDF(invoice, settings);
+                    await sendMonthlyInvoiceNotification(customer, invoice, pdfBuffer);
                 } catch (notifErr) {
-                    console.error(`Failed to notify customer ${customer.name} for invoice ${gapStatementNo}`, notifErr);
+                    console.error(`Failed to notify customer ${customer.name} with PDF for invoice ${gapStatementNo}`, notifErr);
+                    // Fallback to notification WITHOUT PDF if buffer generation failed (though unlikely)
+                    try { await sendMonthlyInvoiceNotification(customer, invoice); } catch(f) {}
                 }
 
                 generatedCount++;
-                console.log(`[Invoice Generator] Created ${gapStatementNo} for ${customer.name} (${gapPeriodDisplay})`);
+                console.log(`[Invoice Generator] Created ${gapStatementNo} (PDF included) for ${customer.name} (${gapPeriodDisplay})`);
             }
         }
 
@@ -487,11 +493,15 @@ exports.generateSingleCustomerInvoice = async (req, res) => {
             transactions: txRows
         });
 
-        // --- AUTOMATIC MONTHLY INVOICE NOTIFICATION ---
+        // --- MANUAL INVOICE NOTIFICATION WITH PDF ---
         try {
-            await sendMonthlyInvoiceNotification(customer, invoice);
+            const settings = await Settings.getSettings();
+            const pdfBuffer = await generateInvoicePDF(invoice, settings);
+            await sendMonthlyInvoiceNotification(customer, invoice, pdfBuffer);
         } catch (notifErr) {
             console.error(`Failed to notify customer ${customer.name} for manual invoice ${statementNo}`, notifErr);
+            // Fallback
+            try { await sendMonthlyInvoiceNotification(customer, invoice); } catch(f) {}
         }
 
         res.status(201).json({ success: true, message: `Invoice ${statementNo} generated`, invoice });
