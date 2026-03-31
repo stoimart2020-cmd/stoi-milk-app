@@ -1,4 +1,5 @@
 const User = require("../models/User");
+const Lead = require("../models/Lead");
 const { createNotification } = require("./notificationController");
 const { sendWelcome } = require("../utils/notification");
 const { logAction } = require("./activityLogController");
@@ -89,6 +90,31 @@ exports.createCustomer = async (req, res) => {
         
         // Trigger Welcome message via SMS/WhatsApp/Email (handled internally based on settings)
         sendWelcome(user).catch(err => console.error("Could not send welcome message async:", err));
+
+        // Also create a CRM Lead entry so it shows on Admin's Sales Pipeline
+        try {
+            const existingCrmLead = await Lead.findOne({ mobile: user.mobile });
+            if (!existingCrmLead) {
+                await Lead.create({
+                    name: user.name || "Unnamed Lead",
+                    mobile: user.mobile,
+                    email: user.email || undefined,
+                    source: "Walk-in",
+                    status: customerData.role === "LEAD" ? "New" : "Interested",
+                    priority: "warm",
+                    address: {
+                        fullAddress: user.address?.fullAddress || ""
+                    },
+                    createdBy: req.user?._id,
+                    assignedTo: req.user?._id,
+                    convertedToCustomer: customerData.role === "CUSTOMER" ? user._id : undefined,
+                    notes: `Created via Field Sales by ${req.user?.name || "System"}`
+                });
+                console.log(`[CRM SYNC] Lead entry created for ${user.mobile}`);
+            }
+        } catch (crmErr) {
+            console.error("[CRM SYNC] Could not create CRM Lead entry:", crmErr.message);
+        }
 
         res.status(201).json({ success: true, result: user });
     } catch (error) {

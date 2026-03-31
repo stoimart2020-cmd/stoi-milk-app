@@ -132,17 +132,20 @@ exports.sendWhatsApp = async (mobile, message, templateData = {}) => {
             const countryCode = mobile.startsWith("91") ? "" : "91";
             const num = `${countryCode}${mobile}`.replace(/\D/g, "");
 
-            // If a template name is provided (e.g., "welcome_template"), use template mode
-            // Otherwise, send a plain text message using MSG91's API
+            // Pre-flight validation
+            if (!integratedNumber) {
+                console.error("[MSG91 WhatsApp] MISSING integratedNumber in settings.whatsapp");
+                return { success: false, error: "MSG91 Integrated WhatsApp Number is not configured in settings" };
+            }
+
+            console.log(`[MSG91 WhatsApp PRE-FLIGHT] apiKey: ${apiKey.substring(0, 6)}..., integratedNumber: ${integratedNumber}, to: ${num}`);
+
             const templateName = templateData.templateName;
 
             let payload;
             let templateParamsArray = [];
 
             if (templateName) {
-                // Template-based WhatsApp message (approved templates only)
-                // Need to parse template variables based on what was passed
-                // For MSG91, template Data is an array of string values
                 if (templateData.params) {
                     if (Array.isArray(templateData.params)) {
                         templateParamsArray = templateData.params;
@@ -176,7 +179,6 @@ exports.sendWhatsApp = async (mobile, message, templateData = {}) => {
                     }
                 };
             } else {
-                // Plain text WhatsApp message (may not work on all MSG91 accounts — requires session)
                 payload = {
                     integrated_number: integratedNumber,
                     content_type: "text",
@@ -187,6 +189,8 @@ exports.sendWhatsApp = async (mobile, message, templateData = {}) => {
                     }
                 };
             }
+
+            console.log("[MSG91 WhatsApp REQUEST PAYLOAD]:", JSON.stringify(payload, null, 2));
 
             try {
                 const response = await axios.post(
@@ -200,17 +204,35 @@ exports.sendWhatsApp = async (mobile, message, templateData = {}) => {
                     }
                 );
                 
-                // MSG91 often returns 200 OK but with hasError inside the JSON
-                if (response.data && (response.data.hasError || response.data.type === "error")) {
-                    console.error("[MSG91 WhatsApp Logic Error]:", response.data);
-                    return { success: false, error: response.data.message || JSON.stringify(response.data) };
+                const resBody = response.data;
+                const resStr = JSON.stringify(resBody);
+                console.log("[MSG91 WhatsApp RAW RESPONSE]:", resStr);
+
+                // Detect all known MSG91 error patterns
+                if (resBody && (
+                    resBody.hasError === true ||
+                    resBody.type === "error" ||
+                    resBody.status === "error" ||
+                    resBody.code === "error" ||
+                    (typeof resBody.message === "string" && resBody.message.toLowerCase().includes("error")) ||
+                    (typeof resBody.msg === "string" && resBody.msg.toLowerCase().includes("error"))
+                )) {
+                    console.error("[MSG91 WhatsApp REJECTED]:", resStr);
+                    return { success: false, error: resBody.message || resBody.msg || resStr };
                 }
-                
-                console.log("[MSG91 WhatsApp Response]:", response.data);
-                return { success: true, data: response.data };
+
+                // Additional check: MSG91 sometimes returns empty or meaningless data
+                if (!resBody || resStr === '{}' || resStr === '""' || resStr === 'null') {
+                    console.error("[MSG91 WhatsApp EMPTY RESPONSE] — message likely not queued");
+                    return { success: false, error: "MSG91 returned an empty response — message was not queued" };
+                }
+
+                return { success: true, data: resBody, rawResponse: resStr };
             } catch (waErr) {
-                console.error("[MSG91 WhatsApp API Error]:", waErr?.response?.data || waErr.message);
-                return { success: false, error: waErr?.response?.data?.message || waErr.message };
+                const errData = waErr?.response?.data;
+                console.error("[MSG91 WhatsApp API ERROR]:", errData || waErr.message);
+                console.error("[MSG91 WhatsApp HTTP Status]:", waErr?.response?.status);
+                return { success: false, error: errData?.message || errData?.msg || JSON.stringify(errData) || waErr.message };
             }
         }
 
