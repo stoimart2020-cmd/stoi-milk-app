@@ -267,11 +267,17 @@ exports.testWhatsApp = async (req, res) => {
         }
 
         // Validate API key
-        const apiKey = settings.whatsapp?.apiKey || settings.smsGateway?.apiKey;
+        const waKey = settings.whatsapp?.apiKey;
+        const smsKey = settings.smsGateway?.apiKey;
+        const apiKey = waKey || smsKey;
+        const keySource = waKey ? "WhatsApp Settings" : (smsKey ? "SMS Gateway (fallback)" : "NONE");
+        
+        console.log(`[Diagnostic] WhatsApp API Key source: ${keySource}, key starts with: ${apiKey ? apiKey.substring(0, 6) : "EMPTY"}...`);
+        
         if (!apiKey) {
             return res.status(400).json({ 
                 success: false, 
-                message: "No API Key found. Please set the WhatsApp API Key (or SMS Gateway Auth Key) and save." 
+                message: `No API Key found. Source check: WhatsApp key=${waKey ? "SET" : "EMPTY"}, SMS key=${smsKey ? "SET" : "EMPTY"}. Please enter your MSG91 Auth Key in the WhatsApp Settings API Key field and save.` 
             });
         }
 
@@ -283,7 +289,7 @@ exports.testWhatsApp = async (req, res) => {
             });
         }
 
-        console.log(`[Diagnostic] Test WhatsApp to ${mobile} — template: ${templateName}, integratedNumber: ${settings.whatsapp.integratedNumber}`);
+        console.log(`[Diagnostic] Test WhatsApp to ${mobile} — template: ${templateName}, integratedNumber: ${settings.whatsapp.integratedNumber}, keySource: ${keySource}`);
         const { sendWhatsApp } = require("../utils/notification");
         
         const testMessage = `Hello! This is a test message from ${settings.site?.siteName || "STOI Milk"}.`;
