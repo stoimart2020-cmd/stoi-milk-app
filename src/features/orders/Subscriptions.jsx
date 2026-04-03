@@ -9,8 +9,39 @@ import { useQuery } from '@tanstack/react-query';
 import { getAllSubscriptions } from '../../shared/api/subscriptions';
 import { getAllProducts } from '../../shared/api/products';
 import { getAllRiders } from '../../shared/api/riders';
-import { updateSubscription } from '../../shared/api/subscriptions';
+import { updateSubscription, updateAdminDailyModification } from '../../shared/api/subscriptions';
+import { getCustomerById } from '../../shared/api/customers';
 import { EditSubscriptionModal } from '../subscriptions/EditSubscriptionModal';
+import { EditCalendarModal } from '../subscriptions/EditCalendarModal';
+
+const CustomerCalendarWrapper = ({ customerId, isOpen, onClose }) => {
+    const { data } = useQuery({
+        queryKey: ["customer", customerId],
+        queryFn: () => getCustomerById(customerId),
+        enabled: !!customerId && isOpen
+    });
+    const { data: productsData } = useQuery({
+        queryKey: ["products"],
+        queryFn: getAllProducts,
+        enabled: isOpen
+    });
+
+    const updateCalendarMutation = useMutation({
+        mutationFn: updateAdminDailyModification,
+    });
+
+    if (!isOpen) return null;
+
+    return (
+        <EditCalendarModal
+            customer={data?.result}
+            products={productsData?.result || []}
+            isOpen={isOpen}
+            onClose={onClose}
+            onSave={updateCalendarMutation.mutateAsync}
+        />
+    );
+};
 import { toast } from 'react-hot-toast';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { useFilters } from '../../shared/context/FilterContext';
@@ -19,6 +50,7 @@ export const Subscriptions = ({ type = 'regular' }) => {
     const [search, setSearch] = useState("");
     const [isEditModalOpen, setIsEditModalOpen] = useState(false);
     const [selectedSubscription, setSelectedSubscription] = useState(null);
+    const [calendarCustomerId, setCalendarCustomerId] = useState(null);
     const queryClient = useQueryClient();
     const { filters: globalFilters } = useFilters();
 
@@ -262,7 +294,7 @@ export const Subscriptions = ({ type = 'regular' }) => {
 
     // Column definitions for the sortable header
     const columns = [
-        { key: 'subId', label: 'Sub. ID', w: 'w-20' },
+        { key: 'subId', label: type === 'trial' ? 'Trial ID' : 'Sub. ID', w: 'w-20' },
         { key: 'product', label: 'Product', w: 'w-32' },
         { key: 'customerId', label: 'Cust. ID', w: 'w-20' },
         { key: 'customerName', label: 'Customer', w: 'w-32' },
@@ -418,16 +450,14 @@ export const Subscriptions = ({ type = 'regular' }) => {
                         <tbody className="divide-y divide-gray-200">
                             {sortedSubscriptions.map((sub) => (
                                 <tr key={sub._id} className="hover:bg-gray-50 transition-colors">
-                                    {/* Sub ID — opens customer detail in new tab */}
+                                    {/* Sub ID — opens calendar popup */}
                                     <td className="px-3 py-3 whitespace-nowrap">
-                                        <Link
-                                            to={`/administrator/dashboard/customers/${sub.user?._id}`}
-                                            target="_blank"
-                                            className="text-blue-600 font-medium text-xs hover:underline flex items-center gap-1"
+                                        <button
+                                            onClick={() => setCalendarCustomerId(sub.user?._id)}
+                                            className="text-blue-600 font-medium text-xs hover:underline flex items-center gap-1 cursor-pointer bg-transparent border-none p-0 focus:outline-none"
                                         >
-                                            {sub.subscriptionId || sub._id?.slice(-6)}
-                                            <ExternalLink size={10} />
-                                        </Link>
+                                            {sub.subscriptionId || sub._id?.slice(-6).toUpperCase()}
+                                        </button>
                                     </td>
                                     {/* Product */}
                                     <td className="px-3 py-3 whitespace-nowrap">
@@ -538,6 +568,13 @@ export const Subscriptions = ({ type = 'regular' }) => {
                     setSelectedSubscription(null);
                 }}
                 onSave={handleUpdateSubscription}
+            />
+
+            {/* Calendar Popup */}
+            <CustomerCalendarWrapper
+                customerId={calendarCustomerId}
+                isOpen={!!calendarCustomerId}
+                onClose={() => setCalendarCustomerId(null)}
             />
         </div>
     );

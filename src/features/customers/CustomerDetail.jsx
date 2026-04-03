@@ -1,4 +1,4 @@
-import { useParams, Link } from "react-router-dom";
+import { useParams, Link, useLocation, useNavigate } from "react-router-dom";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { getCustomerById, updateCustomer, updateVacation, getTempOtp } from "../../shared/api/customers";
 import { addPayment } from "../../shared/api/payments";
@@ -8,7 +8,7 @@ import { getAllProducts } from "../../shared/api/products";
 import { getActivityLogs } from "../../shared/api/logs";
 import { getCustomerComplaints, createComplaint } from "../../shared/api/complaints";
 import { toast } from "react-hot-toast";
-import { useState, useMemo } from "react";
+import { useState, useMemo, useEffect } from "react";
 import { EditCustomerModal } from "./EditCustomerModal";
 import { CreateTicketModal } from "../crm/CreateTicketModal";
 import { AddSubscriptionModal } from "../subscriptions/AddSubscriptionModal";
@@ -195,6 +195,18 @@ export const CustomerDetail = () => {
     });
 
     const customer = data?.result;
+
+    const location = useLocation();
+    const navigate = useNavigate();
+
+    // Auto-open calendar modal if requested via URL
+    useEffect(() => {
+        if (location.search.includes("openCalendar=true") && customer) {
+            setIsCalendarModalOpen(true);
+            // Revert the URL to keep it clean after opening
+            navigate(location.pathname, { replace: true });
+        }
+    }, [location.search, customer, navigate]);
 
     const { data: productsData } = useQuery({
         queryKey: ["products"],
@@ -1039,9 +1051,11 @@ export const CustomerDetail = () => {
                                                 </td>
                                             </tr>
                                         ) : (
-                                            customerSubscriptions.map((sub) => (
+                                            customerSubscriptions.map((sub, index) => (
                                                 <tr key={sub._id}>
-                                                    <td>{sub._id.slice(-6).toUpperCase()}</td>
+                                                    <td className="cursor-pointer text-blue-600 hover:underline font-medium" onClick={() => setIsCalendarModalOpen(true)}>
+                                                        {index + 1}
+                                                    </td>
                                                     <td>{sub.product?.name || "Unknown"}</td>
                                                     <td>{sub.frequency}</td>
                                                     <td>{sub.quantity}</td>
@@ -1155,9 +1169,11 @@ export const CustomerDetail = () => {
                                                 </td>
                                             </tr>
                                         ) : (
-                                            customerSubscriptions.filter(sub => sub.isTrial).map((sub) => (
+                                            customerSubscriptions.filter(sub => sub.isTrial).map((sub, index) => (
                                                 <tr key={sub._id}>
-                                                    <td>{sub._id.slice(-6).toUpperCase()}</td>
+                                                    <td className="cursor-pointer text-blue-600 hover:underline font-medium" onClick={() => setIsCalendarModalOpen(true)}>
+                                                        {index + 1}
+                                                    </td>
                                                     <td>{sub.product?.name || "Unknown"}</td>
                                                     <td>{sub.frequency}</td>
                                                     <td>{sub.quantity}</td>
