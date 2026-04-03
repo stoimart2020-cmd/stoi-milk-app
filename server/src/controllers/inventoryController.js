@@ -3,6 +3,8 @@ const ProductionLog = require("../models/ProductionLog");
 const Subscription = require("../models/Subscription");
 const Order = require("../models/Order");
 const Product = require("../models/Product");
+const User = require("../models/User");
+const Employee = require("../models/Employee");
 
 // --- Helper: Get Daily Demand (Projected) ---
 const getDailyDemand = async (date) => {

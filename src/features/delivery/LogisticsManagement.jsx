@@ -34,83 +34,10 @@ const TABS = [
     { key: "deliveryRoutes", label: "Routes", icon: Route, singular: "Delivery Route" },
 ];
 
-export const LogisticsManagement = () => {
-    const [activeTab, setActiveTab] = useState("forecast");
-    const [isModalOpen, setIsModalOpen] = useState(false);
-    const [editingItem, setEditingItem] = useState(null);
-
-    const currentTab = TABS.find(t => t.key === activeTab);
-
-    return (
-        <div className="p-6 space-y-6">
-            <div className="flex justify-between items-center">
-                <div>
-                    <h1 className="text-2xl font-bold">Logistics Management</h1>
-                    <p className="text-sm text-gray-500 mt-1">Factory â†’ District â†’ City â†’ Hub â†’ Area â†’ Delivery Point</p>
-                </div>
-                {!["areas", "forecast", "loading-sheets", "production-log", "reconciliation"].includes(currentTab.key) && (
-                    <button
-                        className="btn btn-primary"
-                        onClick={() => {
-                            setEditingItem(null);
-                            setIsModalOpen(true);
-                        }}
-                    >
-                        <Plus size={20} /> Add {currentTab?.singular}
-                    </button>
-                )}
-            </div>
-
-            {/* Tabs */}
-            <div className="tabs tabs-boxed bg-base-200 w-fit flex-wrap h-auto">
-                {TABS.map((tab, idx) => {
-                    const Icon = tab.icon;
-                    return (
-                        <span key={tab.key} className="flex items-center">
-                            <a
-                                className={`tab transition-all ${activeTab === tab.key ? "tab-active font-bold" : ""}`}
-                                onClick={() => setActiveTab(tab.key)}
-                            >
-                                <Icon size={16} className="mr-2" /> {tab.label}
-                            </a>
-                            {/* Separator between Area and Hub */}
-                            {idx === 7 && <span className="mx-0.5 text-gray-300">|</span>}
-                        </span>
-                    );
-                })}
-            </div>
-
-            {/* Content */}
-            <div className="bg-base-100 rounded-lg shadow overflow-hidden">
-                {activeTab === "forecast" && <DemandForecast />}
-                {activeTab === "production-log" && <ProductionLog />}
-                {activeTab === "reconciliation" && <InventoryReconciliation />}
-                {activeTab === "loading-sheets" && <RiderLoadingSheets />}
-                {activeTab === "truck-routes" && <TruckRouteManagement />}
-                {activeTab === "factories" && <div className="p-4"><FactoriesList onEdit={(item) => { setEditingItem(item); setIsModalOpen(true); }} /></div>}
-                {activeTab === "districts" && <div className="p-4"><DistrictsList onEdit={(item) => { setEditingItem(item); setIsModalOpen(true); }} /></div>}
-                {activeTab === "cities" && <div className="p-4"><CitiesList onEdit={(item) => { setEditingItem(item); setIsModalOpen(true); }} /></div>}
-                {activeTab === "hubs" && <div className="p-4"><HubsList onEdit={(item) => { setEditingItem(item); setIsModalOpen(true); }} /></div>}
-                {activeTab === "areas" && <div className="p-4"><ServiceAreaManagement /></div>}
-                {activeTab === "deliveryPoints" && <div className="p-4"><DeliveryPointsList onEdit={(item) => { setEditingItem(item); setIsModalOpen(true); }} /></div>}
-                {activeTab === "deliveryRoutes" && <div className="p-4"><DeliveryRoutesList onEdit={(item) => { setEditingItem(item); setIsModalOpen(true); }} /></div>}
-            </div>
-
-            {/* Modal */}
-            {isModalOpen && (
-                <LogisticsModal
-                    type={activeTab}
-                    item={editingItem}
-                    onClose={() => setIsModalOpen(false)}
-                />
-            )}
-        </div>
-    );
-};
-
 // ========================
 // LIST COMPONENTS
 // ========================
+
 
 const FactoriesList = ({ onEdit }) => {
     const { data, isLoading } = useQuery({ queryKey: ["factories"], queryFn: getFactories });
@@ -1587,6 +1514,83 @@ const TruckRouteManagement = () => {
                         </div>
                     </div>
                 </div>
+            )}
+        </div>
+    );
+};
+
+// ==============================
+// MAIN LOGISTICS DASHBOARD ENTRY
+// ==============================
+export const LogisticsManagement = () => {
+    const [activeTab, setActiveTab] = useState("forecast");
+    const [isModalOpen, setIsModalOpen] = useState(false);
+    const [editingItem, setEditingItem] = useState(null);
+
+    const currentTab = TABS.find(t => t.key === activeTab);
+
+    return (
+        <div className="p-6 space-y-6">
+            <div className="flex justify-between items-center">
+                <div>
+                    <h1 className="text-2xl font-bold">Logistics Management</h1>
+                    <p className="text-sm text-gray-500 mt-1">Factory → District → City → Hub → Area → Delivery Point</p>
+                </div>
+                {!["areas", "forecast", "loading-sheets", "production-log", "reconciliation"].includes(currentTab.key) && (
+                    <button
+                        className="btn btn-primary"
+                        onClick={() => {
+                            setEditingItem(null);
+                            setIsModalOpen(true);
+                        }}
+                    >
+                        <Plus size={20} /> Add {currentTab?.singular}
+                    </button>
+                )}
+            </div>
+
+            {/* Tabs */}
+            <div className="tabs tabs-boxed bg-base-200 w-fit flex-wrap h-auto">
+                {TABS.map((tab, idx) => {
+                    const Icon = tab.icon;
+                    return (
+                        <span key={tab.key} className="flex items-center">
+                            <a
+                                className={`tab transition-all ${activeTab === tab.key ? "tab-active font-bold" : ""}`}
+                                onClick={() => setActiveTab(tab.key)}
+                            >
+                                <Icon size={16} className="mr-2" /> {tab.label}
+                            </a>
+                            {/* Separator between Area and Hub */}
+                            {idx === 7 && <span className="mx-0.5 text-gray-300">|</span>}
+                        </span>
+                    );
+                })}
+            </div>
+
+            {/* Content */}
+            <div className="bg-base-100 rounded-lg shadow overflow-hidden">
+                {activeTab === "forecast" && <DemandForecast />}
+                {activeTab === "production-log" && <ProductionLog />}
+                {activeTab === "reconciliation" && <InventoryReconciliation />}
+                {activeTab === "loading-sheets" && <RiderLoadingSheets />}
+                {activeTab === "truck-routes" && <TruckRouteManagement />}
+                {activeTab === "factories" && <div className="p-4"><FactoriesList onEdit={(item) => { setEditingItem(item); setIsModalOpen(true); }} /></div>}
+                {activeTab === "districts" && <div className="p-4"><DistrictsList onEdit={(item) => { setEditingItem(item); setIsModalOpen(true); }} /></div>}
+                {activeTab === "cities" && <div className="p-4"><CitiesList onEdit={(item) => { setEditingItem(item); setIsModalOpen(true); }} /></div>}
+                {activeTab === "hubs" && <div className="p-4"><HubsList onEdit={(item) => { setEditingItem(item); setIsModalOpen(true); }} /></div>}
+                {activeTab === "areas" && <div className="p-4"><ServiceAreaManagement /></div>}
+                {activeTab === "deliveryPoints" && <div className="p-4"><DeliveryPointsList onEdit={(item) => { setEditingItem(item); setIsModalOpen(true); }} /></div>}
+                {activeTab === "deliveryRoutes" && <div className="p-4"><DeliveryRoutesList onEdit={(item) => { setEditingItem(item); setIsModalOpen(true); }} /></div>}
+            </div>
+
+            {/* Modal */}
+            {isModalOpen && (
+                <LogisticsModal
+                    type={activeTab}
+                    item={editingItem}
+                    onClose={() => setIsModalOpen(false)}
+                />
             )}
         </div>
     );
