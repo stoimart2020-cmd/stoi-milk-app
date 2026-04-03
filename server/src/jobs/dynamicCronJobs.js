@@ -102,6 +102,26 @@ const processSubscriptionPayments = async (targetDateOverride = null) => {
         // 1. Determine "Tomorrow's" Date
         const tomorrow = targetDateOverride ? new Date(targetDateOverride) : getTomorrowDate();
         const tomorrowDateStr = formatDate(tomorrow);
+
+        // --- DISTRIBUTED DB LOCK ---
+        const CronLock = require('../models/CronLock');
+        const lockId = Math.random().toString(36).substring(2, 15);
+        try {
+            await CronLock.create({
+                jobName: "processSubscriptionPayments",
+                targetDate: tomorrowDateStr,
+                instanceId: lockId,
+                expiresAt: new Date(Date.now() + 2 * 60 * 60 * 1000) // 2 hour TTL lock
+            });
+            console.log(`[CRON] 🔒 Lock acquired by instance ${lockId} for processSubscriptionPayments on ${tomorrowDateStr}`);
+        } catch (lockErr) {
+            if (lockErr.code === 11000) {
+                console.log(`[CRON] ⏸️ Job already running or completed by another instance for ${tomorrowDateStr}. Bypassing.`);
+                return;
+            }
+            throw lockErr;
+        }
+
         const tomorrowDayName = tomorrow.toLocaleDateString('en-US', { weekday: 'long', timeZone: 'Asia/Kolkata' });
 
         console.log(`[CRON] Processing for delivery date: ${tomorrowDateStr} (${tomorrowDayName})`);
@@ -319,6 +339,25 @@ const autoAssignOrders = async (targetDateOverride = null) => {
         const tomorrow = targetDateOverride ? new Date(targetDateOverride) : getTomorrowDate();
         const tomorrowDateStr = formatDate(tomorrow);
 
+        // --- DISTRIBUTED DB LOCK ---
+        const CronLock = require('../models/CronLock');
+        const lockId = Math.random().toString(36).substring(2, 15);
+        try {
+            await CronLock.create({
+                jobName: "autoAssignOrders",
+                targetDate: tomorrowDateStr,
+                instanceId: lockId,
+                expiresAt: new Date(Date.now() + 2 * 60 * 60 * 1000) // 2 hour TTL lock
+            });
+            console.log(`[CRON] 🔒 Lock acquired by instance ${lockId} for autoAssignOrders on ${tomorrowDateStr}`);
+        } catch (lockErr) {
+            if (lockErr.code === 11000) {
+                console.log(`[CRON] ⏸️ Assignment Job already running or completed by another instance for ${tomorrowDateStr}. Bypassing.`);
+                return;
+            }
+            throw lockErr;
+        }
+
         console.log(`[CRON] Auto-assigning orders for delivery date: ${tomorrowDateStr}`);
 
         // Find unassigned orders for tomorrow (using date range for reliability)
@@ -332,7 +371,7 @@ const autoAssignOrders = async (targetDateOverride = null) => {
                 { assignedRider: { $exists: false } }
             ],
             status: { $in: ['pending', 'confirmed'] }
-        }).populate('customer', 'name mobile address deliveryBoy');
+        }).populate('customer', 'name mobile address deliveryBoy area hub');
 
         console.log(`[CRON] Found ${orders.length} unassigned orders.`);
 
@@ -365,13 +404,24 @@ const autoAssignOrders = async (targetDateOverride = null) => {
 
         for (const order of orders) {
             try {
-                // First check if the customer has a deliveryBoy assigned
+                // First check if the customer has a specific deliveryBoy manually assigned
                 const customer = order.customer;
                 let rider = null;
                 if (customer && customer.deliveryBoy) {
                     rider = riders.find(r => r._id.toString() === customer.deliveryBoy.toString());
                 }
-                // Fallback to round-robin if no customer-specific rider
+
+                // Smart Route Optimization: Find the first rider who covers this Service Area
+                if (!rider && customer && customer.area) {
+                    rider = riders.find(r => r.areas && r.areas.some(a => a.toString() === customer.area.toString()));
+                }
+
+                // Smart Route Optimization: Fallback to finding a rider connected to this Hub
+                if (!rider && customer && customer.hub) {
+                    rider = riders.find(r => r.hub && r.hub.toString() === customer.hub.toString());
+                }
+
+                // Fallback to round-robin if STILL no logical logistical rider found
                 if (!rider) {
                     rider = riders[riderIndex % riders.length];
                     riderIndex++;

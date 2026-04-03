@@ -29,6 +29,19 @@ const invoiceSchema = new Schema({
         type: Number,
         default: 0
     },
+    subTotal: {
+        type: Number,
+        default: 0
+    },
+    totalTax: {
+        type: Number,
+        default: 0
+    },
+    gstBreakdown: {
+        cgst: { type: Number, default: 0 },
+        sgst: { type: Number, default: 0 },
+        igst: { type: Number, default: 0 },
+    },
     type: {
         type: String,
         enum: ['STANDARD', 'SUBSCRIPTION'],

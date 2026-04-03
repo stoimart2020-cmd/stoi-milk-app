@@ -125,8 +125,8 @@ const settingsRoutes = require("./routes/settingsRoutes");
 const categoryRoutes = require("./routes/categoryRoutes");
 const serviceAreaRoutes = require("./routes/serviceAreaRoutes");
 
-// Auth routes (rate limiting disabled for development)
-app.use("/api/auth", authRoutes);
+// Auth routes (Rate limiting ALWAYS enabled to prevent SMS/OTP abuse)
+app.use("/api/auth", authLimiter, authRoutes);
 
 // General API routes with standard rate limiting
 app.use("/api/categories", apiLimiter, categoryRoutes);

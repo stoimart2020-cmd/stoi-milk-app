@@ -804,6 +804,12 @@ exports.updateOrderStatus = async (req, res) => {
             } catch (smsErr) {
                 console.error("Delivery SMS failed", smsErr);
             }
+
+            // --- Phase 2: Automated Loyalty Loop ---
+            // If this is the customer's very first delivered order, issue the referral rewards!
+            const { processReferralRewards } = require("../utils/loyaltyLoop");
+            await processReferralRewards(order.customer._id || order.customer, req.user._id);
+
         } else if (status === "cancelled" && order.status !== "cancelled") {
             // 1. REFUND WALLET (if paid via Wallet)
             const mode = (order.paymentMode || "").toUpperCase();
@@ -975,6 +981,11 @@ exports.updateOrder = async (req, res) => {
                     order.paymentStatus = "paid";
                 }
             }
+
+            // --- Phase 2: Automated Loyalty Loop ---
+            const { processReferralRewards } = require("../utils/loyaltyLoop");
+            await processReferralRewards(order.customer._id || order.customer, req.user._id);
+
         } else if (status === "cancelled" && oldStatus !== "cancelled") {
             // Refund wallet if moving to cancelled and it was paid
             if ((oldPaymentStatus === "paid" || oldPaymentStatus === "Paid") && mode === "WALLET") {

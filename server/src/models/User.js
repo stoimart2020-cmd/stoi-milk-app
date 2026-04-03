@@ -94,6 +94,7 @@ const userSchema = new mongoose.Schema(
         deliveryBoy: { type: mongoose.Schema.Types.ObjectId, ref: "Employee" },
 
         // Customer details
+        businessName: { type: String }, // For B2B / GST Billing
         gstNumber: { type: String },
         type: { type: String, enum: ["Consumer", "Business", "Reseller"], default: "Consumer" },
         referrerMobile: { type: String },

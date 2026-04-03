@@ -93,6 +93,13 @@ const orderSchema = new mongoose.Schema(
     { timestamps: true }
 );
 
+// Performance Indexes
+orderSchema.index({ customer: 1, deliveryDate: -1 });
+orderSchema.index({ assignedRider: 1, status: 1 });
+orderSchema.index({ deliveryDate: 1, _id: 1 });
+orderSchema.index({ status: 1 });
+
+
 orderSchema.pre("save", async function () {
     if (this.isNew && !this.orderId) {
         const Counter = require("./Counter");
