@@ -35,7 +35,9 @@ const employeeSchema = new mongoose.Schema(
 
         // Role specific assignments
         factory: { type: mongoose.Schema.Types.ObjectId, ref: "Factory" },
-        hub: { type: mongoose.Schema.Types.ObjectId, ref: "Hub" },
+        hub: { type: mongoose.Schema.Types.ObjectId, ref: "Hub" }, // Primary hub
+        hubs: [{ type: mongoose.Schema.Types.ObjectId, ref: "Hub" }], // Multiple hubs for Truck Drivers
+
         // Rider/Employee coverage — areas or specific delivery points
         areas: [{ type: mongoose.Schema.Types.ObjectId, ref: "Area" }],
         deliveryPoints: [{ type: mongoose.Schema.Types.ObjectId, ref: "DeliveryPoint" }],

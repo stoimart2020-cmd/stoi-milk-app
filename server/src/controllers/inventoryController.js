@@ -49,13 +49,85 @@ const getDailyDemand = async (date) => {
     return totalLitersDemand;
 };
 
-// --- Advanced: Logistics Forecast (Hub & Product Breakdown) ---
+// --- Advanced: Logistics Forecast 4-Tier Breakdown (Rider -> Hub -> Truck -> Factory) ---
 exports.getLogisticsForecast = async (req, res) => {
     try {
         const dateStr = req.query.date || new Date(Date.now() + 86400000).toISOString().split('T')[0]; // Default: Tomorrow
         const targetDate = new Date(dateStr);
         targetDate.setHours(0, 0, 0, 0);
         const dayName = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"][targetDate.getDay()];
+
+        const Employee = require("../models/Employee");
+        const truckDrivers = await Employee.find({ role: "TRUCK_DRIVER", isActive: true });
+        
+        // Map Hubs to Truck Drivers
+        const hubToDriverMap = {}; // hubId -> { _id, name }
+        truckDrivers.forEach(d => {
+            if (d.hubs && d.hubs.length > 0) {
+                d.hubs.forEach(h => {
+                    hubToDriverMap[h.toString()] = { _id: d._id.toString(), name: d.name };
+                });
+            }
+        });
+
+        const forecastData = {
+            totalLiters: 0,
+            trucks: {}, // truckId -> { name, hubs: {}, products: {} }
+            factoryProducts: {} // Factor total aggregates
+        };
+        
+        const getStructures = (hubId, hubName, riderId, riderName) => {
+            const driver = hubToDriverMap[hubId] || { _id: 'unassigned_truck', name: 'Unassigned Truck' };
+            const did = driver._id;
+            
+            if (!forecastData.trucks[did]) {
+                forecastData.trucks[did] = { name: driver.name, hubs: {}, products: {} };
+            }
+            if (!forecastData.trucks[did].hubs[hubId]) {
+                forecastData.trucks[did].hubs[hubId] = { name: hubName, riders: {}, products: {} };
+            }
+            if (!forecastData.trucks[did].hubs[hubId].riders[riderId]) {
+                forecastData.trucks[did].hubs[hubId].riders[riderId] = { name: riderName, products: {} };
+            }
+            
+            return {
+                truckNode: forecastData.trucks[did],
+                hubNode: forecastData.trucks[did].hubs[hubId],
+                riderNode: forecastData.trucks[did].hubs[hubId].riders[riderId]
+            };
+        };
+        
+        const addProductData = (nodes, p, qty) => {
+            const pid = p._id.toString();
+            let vol = 0;
+            if (p.unit === "litre" || p.unit === "l") vol = p.unitValue || 1;
+            else if (p.unit === "ml") vol = (p.unitValue || 500) / 1000;
+            const liters = qty * vol;
+            
+            const baseProduct = { name: p.name, units: 0, liters: 0, unit: p.unit, unitValue: p.unitValue, unitsPerCrate: p.unitsPerCrate || 12 };
+
+            // 1. Factory aggregate
+            if (!forecastData.factoryProducts[pid]) forecastData.factoryProducts[pid] = { ...baseProduct };
+            forecastData.factoryProducts[pid].units += qty;
+            forecastData.factoryProducts[pid].liters += liters;
+
+            // 2. Truck aggregate
+            if (!nodes.truckNode.products[pid]) nodes.truckNode.products[pid] = { ...baseProduct };
+            nodes.truckNode.products[pid].units += qty;
+            nodes.truckNode.products[pid].liters += liters;
+
+            // 3. Hub aggregate
+            if (!nodes.hubNode.products[pid]) nodes.hubNode.products[pid] = { ...baseProduct };
+            nodes.hubNode.products[pid].units += qty;
+            nodes.hubNode.products[pid].liters += liters;
+
+            // 4. Rider aggregate
+            if (!nodes.riderNode.products[pid]) nodes.riderNode.products[pid] = { ...baseProduct };
+            nodes.riderNode.products[pid].units += qty;
+            nodes.riderNode.products[pid].liters += liters;
+
+            forecastData.totalLiters += liters;
+        };
 
         // 1. Check if Orders already exist for this date
         const existingOrders = await Order.find({
@@ -64,60 +136,40 @@ exports.getLogisticsForecast = async (req, res) => {
                 $lte: new Date(targetDate.getTime() + 86399999) 
             },
             status: { $ne: "cancelled" }
-        }).populate("customer products.product");
-
-        const forecastData = {}; // { hubId: { hubName: "", products: { productId: { name: "", qty: 0, liters: 0 } } } }
-        let totalLiters = 0;
+        }).populate("customer products.product assignedRider");
 
         if (existingOrders.length > 0) {
-            // USE ACTUAL ORDERS (Already generated/edited)
             console.log(`[Logistics] Using ${existingOrders.length} actual orders for ${dateStr}`);
             
             for (const order of existingOrders) {
                 const hub = order.customer?.hub;
-                const hubId = hub?._id?.toString() || "unassigned";
+                const hubId = hub?._id?.toString() || "unassigned_hub";
                 const hubName = hub?.name || "Unassigned Hub";
+                
+                const rider = order.assignedRider;
+                const riderId = rider?._id?.toString() || "unassigned_rider";
+                const riderName = rider?.name || "Unassigned Rider";
 
-                if (!forecastData[hubId]) {
-                    forecastData[hubId] = { name: hubName, products: {} };
-                }
+                const nodes = getStructures(hubId, hubName, riderId, riderName);
 
                 for (const item of order.products) {
-                    const p = item.product;
-                    if (!p) continue;
-
-                    const pid = p._id.toString();
-                    if (!forecastData[hubId].products[pid]) {
-                        forecastData[hubId].products[pid] = { 
-                            name: p.name, units: 0, liters: 0, 
-                            unit: p.unit, unitValue: p.unitValue, 
-                            unitsPerCrate: p.unitsPerCrate || 12 
-                        };
+                    if (item.product) {
+                        addProductData(nodes, item.product, item.quantity);
                     }
-
-                    forecastData[hubId].products[pid].units += item.quantity;
-                    
-                    // Liters conversion
-                    let vol = 0;
-                    if (p.unit === "litre" || p.unit === "l") vol = p.unitValue || 1;
-                    else if (p.unit === "ml") vol = (p.unitValue || 500) / 1000;
-                    
-                    const liters = (item.quantity * vol);
-                    forecastData[hubId].products[pid].liters += liters;
-                    totalLiters += liters;
                 }
             }
         } else {
-            // PROJECT SUBSCRIPTIONS (For future dates)
             console.log(`[Logistics] Projecting subscriptions for ${dateStr}`);
             const subscriptions = await Subscription.find({
                 status: "active",
                 startDate: { $lte: targetDate },
                 $or: [{ endDate: { $exists: false } }, { endDate: { $gte: targetDate } }]
-            }).populate("user product");
+            }).populate("user product assignedRider");
 
+            // Also load user delivery boys for fallback
+            const User = require("../models/User");
+            
             for (const sub of subscriptions) {
-                // Check frequency logic
                 let qty = 0;
                 if (sub.frequency === "Daily") qty = sub.quantity;
                 else if (sub.frequency === "Alternate Days") {
@@ -133,44 +185,40 @@ exports.getLogisticsForecast = async (req, res) => {
 
                 if (qty <= 0) continue;
 
+                // Resolve Hub & Rider Hierarchy
                 const hub = sub.user?.hub;
-                const hubId = hub?._id?.toString() || (sub.user?.hub ? sub.user.hub.toString() : "unassigned");
-                const hubName = hub?.name || "Unassigned Hub"; // Note: might need better hub resolution if not populated deep enough
+                const hubId = hub?._id?.toString() || (sub.user?.hub ? sub.user.hub.toString() : "unassigned_hub");
+                const hubName = hub?.name || "Unassigned Hub";
 
-                if (!forecastData[hubId]) {
-                    forecastData[hubId] = { name: hubName, products: {} };
+                // Rider priority: Subscription explicit rider -> Customer explicit rider -> unassigned
+                let riderId = "unassigned_rider";
+                let riderName = "Unassigned Rider";
+                
+                if (sub.assignedRider) {
+                    riderId = sub.assignedRider._id.toString();
+                    riderName = sub.assignedRider.name;
+                } else if (sub.user?.deliveryBoy) {
+                    // Quick fetch of customer delivery boy name if populated
+                    const dboy = await Employee.findById(sub.user.deliveryBoy);
+                    if (dboy) {
+                        riderId = dboy._id.toString();
+                        riderName = dboy.name;
+                    }
                 }
 
-                const p = sub.product;
-                if (!p) continue;
-
-                const pid = p._id.toString();
-                if (!forecastData[hubId].products[pid]) {
-                    forecastData[hubId].products[pid] = { 
-                        name: p.name, units: 0, liters: 0, 
-                        unit: p.unit, unitValue: p.unitValue, 
-                        unitsPerCrate: p.unitsPerCrate || 12 
-                    };
-                }
-
-                forecastData[hubId].products[pid].units += qty;
-                
-                let vol = 0;
-                if (p.unit === "litre" || p.unit === "l") vol = p.unitValue || 1;
-                else if (p.unit === "ml") vol = (p.unitValue || 500) / 1000;
-                
-                const liters = (qty * vol);
-                forecastData[hubId].products[pid].liters += liters;
-                totalLiters += liters;
+                const nodes = getStructures(hubId, hubName, riderId, riderName);
+                if (sub.product) addProductData(nodes, sub.product, qty);
             }
         }
 
-        // Return structured result for UI
         res.status(200).json({
             success: true,
             date: dateStr,
-            totalLiters: totalLiters.toFixed(2),
-            hubs: forecastData
+            totalLiters: forecastData.totalLiters.toFixed(2),
+            hierarchy: {
+                trucks: forecastData.trucks,
+                factoryProducts: forecastData.factoryProducts
+            }
         });
 
     } catch (error) {
