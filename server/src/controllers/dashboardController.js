@@ -3,6 +3,8 @@ const Order = require("../models/Order");
 const Product = require("../models/Product");
 const Subscription = require("../models/Subscription");
 const Category = require("../models/Category");
+const Complaint = require("../models/Complaint");
+const Transaction = require("../models/Transaction");
 const { resolveHubs } = require("../utils/logisticsHelper");
 
 exports.getDashboardStats = async (req, res) => {
@@ -211,6 +213,11 @@ exports.getDashboardStats = async (req, res) => {
                 categorySplit: await getCategorySplit(customerScope),
                 comparisonData: await getComparisonData(customerScope),
                 salesForecast: await getSalesForecast(userScope),
+                customerGrowth: await getCustomerGrowthData(userScope),
+                deliveryPerformance7Day: await getDeliveryPerformance7Day(customerScope),
+                walletSummary: await getWalletSummary(),
+                complaintStats: await getComplaintStats(),
+                frequencySplit: await getFrequencySplit(userScope),
             },
         });
     } catch (error) {
@@ -442,4 +449,145 @@ async function getSalesForecast(matchStage) {
     }
 
     return forecast;
+}
+
+// Customer Growth Data (last 6 months: new customers vs cancelled subs)
+async function getCustomerGrowthData(matchStage) {
+    const sixMonthsAgo = new Date();
+    sixMonthsAgo.setMonth(sixMonthsAgo.getMonth() - 5);
+    sixMonthsAgo.setDate(1);
+    sixMonthsAgo.setHours(0, 0, 0, 0);
+
+    // New customers by month
+    const newCustomers = await User.aggregate([
+        { $match: { role: "CUSTOMER", createdAt: { $gte: sixMonthsAgo } } },
+        {
+            $group: {
+                _id: { month: { $month: "$createdAt" }, year: { $year: "$createdAt" } },
+                count: { $sum: 1 }
+            }
+        },
+        { $sort: { "_id.year": 1, "_id.month": 1 } }
+    ]);
+
+    // Cancelled subscriptions by month
+    const cancelled = await Subscription.aggregate([
+        { $match: { ...matchStage, status: "cancelled", updatedAt: { $gte: sixMonthsAgo } } },
+        {
+            $group: {
+                _id: { month: { $month: "$updatedAt" }, year: { $year: "$updatedAt" } },
+                count: { $sum: 1 }
+            }
+        },
+        { $sort: { "_id.year": 1, "_id.month": 1 } }
+    ]);
+
+    const months = [];
+    const now = new Date();
+    let cursor = new Date(sixMonthsAgo);
+    const monthNames = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+
+    while (cursor <= now) {
+        const m = cursor.getMonth() + 1;
+        const y = cursor.getFullYear();
+        const nc = newCustomers.find(r => r._id.month === m && r._id.year === y);
+        const cc = cancelled.find(r => r._id.month === m && r._id.year === y);
+        months.push({
+            name: `${monthNames[m - 1]} ${y}`,
+            newCustomers: nc ? nc.count : 0,
+            churned: cc ? cc.count : 0,
+        });
+        cursor.setMonth(cursor.getMonth() + 1);
+    }
+    return months;
+}
+
+// 7-Day Delivery Performance
+async function getDeliveryPerformance7Day(matchStage) {
+    const dayNames = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
+    const result = [];
+
+    for (let i = 6; i >= 0; i--) {
+        const date = new Date();
+        date.setDate(date.getDate() - i);
+        date.setHours(0, 0, 0, 0);
+        const next = new Date(date);
+        next.setDate(next.getDate() + 1);
+
+        const orders = await Order.find({
+            ...matchStage,
+            deliveryDate: { $gte: date, $lt: next },
+            status: { $ne: "pending" },
+        }).select("status").lean();
+
+        const total = orders.length;
+        const delivered = orders.filter(o => o.status === "delivered").length;
+        const cancelled = orders.filter(o => o.status === "cancelled").length;
+        const pending = orders.filter(o => o.status !== "delivered" && o.status !== "cancelled").length;
+        const successRate = total > 0 ? Math.round((delivered / total) * 100) : 0;
+
+        result.push({
+            day: dayNames[date.getDay()],
+            date: date.toISOString().split("T")[0],
+            total,
+            delivered,
+            cancelled,
+            pending,
+            successRate,
+        });
+    }
+    return result;
+}
+
+// Wallet Summary (current month)
+async function getWalletSummary() {
+    const startOfMonth = new Date();
+    startOfMonth.setDate(1);
+    startOfMonth.setHours(0, 0, 0, 0);
+
+    const credits = await Transaction.aggregate([
+        { $match: { type: "CREDIT", status: "SUCCESS", createdAt: { $gte: startOfMonth } } },
+        { $group: { _id: null, total: { $sum: "$amount" }, count: { $sum: 1 } } }
+    ]);
+
+    const debits = await Transaction.aggregate([
+        { $match: { type: "DEBIT", status: "SUCCESS", createdAt: { $gte: startOfMonth } } },
+        { $group: { _id: null, total: { $sum: "$amount" }, count: { $sum: 1 } } }
+    ]);
+
+    const modeSplit = await Transaction.aggregate([
+        { $match: { type: "CREDIT", status: "SUCCESS", createdAt: { $gte: startOfMonth } } },
+        { $group: { _id: "$mode", total: { $sum: "$amount" }, count: { $sum: 1 } } },
+        { $sort: { total: -1 } }
+    ]);
+
+    return {
+        totalCredits: credits[0]?.total || 0,
+        creditCount: credits[0]?.count || 0,
+        totalDebits: debits[0]?.total || 0,
+        debitCount: debits[0]?.count || 0,
+        netFlow: (credits[0]?.total || 0) - (debits[0]?.total || 0),
+        modeSplit: modeSplit.map(m => ({ mode: m._id || "Unknown", amount: m.total, count: m.count })),
+    };
+}
+
+// Complaint Stats
+async function getComplaintStats() {
+    const statuses = ["Open", "In Progress", "Resolved", "Closed"];
+    const result = {};
+    for (const s of statuses) {
+        result[s.toLowerCase().replace(/ /g, "_")] = await Complaint.countDocuments({ status: s });
+    }
+    result.total = Object.values(result).reduce((a, b) => a + b, 0);
+    return result;
+}
+
+// Subscription Frequency Split
+async function getFrequencySplit(matchStage) {
+    const split = await Subscription.aggregate([
+        { $match: { ...matchStage, status: { $in: ["active", "paused"] } } },
+        { $group: { _id: "$frequency", count: { $sum: 1 } } },
+        { $sort: { count: -1 } }
+    ]);
+    return split.map(s => ({ name: s._id, value: s.count }));
 }
