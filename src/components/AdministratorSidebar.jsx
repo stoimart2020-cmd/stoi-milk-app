@@ -290,7 +290,7 @@ export const AdministratorSidebar = ({ className = "", user, collapsed = false }
                         title={collapsed ? item.label : ""}
                     >
                         <div className={`flex items-center gap-3 ${collapsed ? 'justify-center w-full' : ''}`}>
-                            <item.icon size={18} />
+                            <item.icon size={collapsed ? 22 : 18} className="flex-shrink-0" />
                             {!collapsed && item.label}
                         </div>
                         {!collapsed && (isExpanded ? <ChevronDown size={16} /> : <ChevronRight size={16} />)}
@@ -332,7 +332,7 @@ export const AdministratorSidebar = ({ className = "", user, collapsed = false }
                 }
                 title={collapsed ? item.label : ""}
             >
-                <item.icon size={18} />
+                <item.icon size={collapsed ? 22 : 18} className="flex-shrink-0" />
                 {!collapsed && item.label}
             </NavLink>
         );
