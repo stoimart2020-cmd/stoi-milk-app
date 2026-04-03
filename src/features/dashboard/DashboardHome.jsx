@@ -154,11 +154,11 @@ export const DashboardHome = () => {
         { title: "Total Customers", value: stats.totalCustomers || 0, icon: Users, gradient: "from-blue-500 to-blue-600", light: "bg-blue-50", text: "text-blue-600" },
         { title: "Active Subscriptions", value: stats.activeSubscriptions || 0, icon: CheckCircle2, gradient: "from-emerald-500 to-teal-600", light: "bg-emerald-50", text: "text-emerald-600" },
         { title: "New Subscribers", value: stats.newSubscribers || 0, icon: UserPlus, gradient: "from-indigo-500 to-purple-600", light: "bg-indigo-50", text: "text-indigo-600", trend: "up" },
-        { title: "Inactive Subs", value: stats.inactiveSubscribers || 0, icon: UserX, gradient: "from-red-500 to-rose-600", light: "bg-red-50", text: "text-red-600", trend: "down" },
-        { title: "Re-Activations", value: stats.reactivations || 0, icon: Lightbulb, gradient: "from-amber-500 to-orange-600", light: "bg-amber-50", text: "text-amber-600" },
         { title: "Trials Active", value: stats.trialCustomers || 0, icon: ShoppingCart, gradient: "from-purple-500 to-fuchsia-600", light: "bg-purple-50", text: "text-purple-600" },
         { title: "Today's Revenue", value: `₹${(stats.todayRevenue || 0).toLocaleString()}`, icon: IndianRupee, gradient: "from-teal-500 to-cyan-600", light: "bg-teal-50", text: "text-teal-600" },
         { title: "Monthly Revenue", value: `₹${(stats.monthlyRevenue || 0).toLocaleString()}`, icon: TrendingUp, gradient: "from-cyan-500 to-sky-600", light: "bg-cyan-50", text: "text-cyan-600" },
+        { title: "Payments This Month", value: `₹${(walletSummary.totalCredits || 0).toLocaleString()}`, icon: Wallet, gradient: "from-green-500 to-emerald-600", light: "bg-green-50", text: "text-green-600" },
+        { title: "Advance in Hand", value: `₹${(walletSummary.advanceInHand || 0).toLocaleString()}`, icon: IndianRupee, gradient: "from-amber-500 to-orange-600", light: "bg-amber-50", text: "text-amber-600" },
     ];
 
     const deliveryCompletionRate = deliveryStats.total > 0

@@ -3,12 +3,12 @@ import { useQuery, useMutation } from "@tanstack/react-query";
 import { getCustomerById, updateCustomer, updateVacation, getTempOtp } from "../../shared/api/customers";
 import { addPayment } from "../../shared/api/payments";
 import { createSubscription, getAdminCustomerSubscriptions, updateAdminDailyModification, updateSubscription, resetTrialEligibility } from "../../shared/api/subscriptions";
-import { createOrder } from "../../shared/api/orders";
+import { createOrder, getOrders } from "../../shared/api/orders";
 import { getAllProducts } from "../../shared/api/products";
 import { getActivityLogs } from "../../shared/api/logs";
 import { getCustomerComplaints, createComplaint } from "../../shared/api/complaints";
 import { toast } from "react-hot-toast";
-import { useState } from "react";
+import { useState, useMemo } from "react";
 import { EditCustomerModal } from "./EditCustomerModal";
 import { CreateTicketModal } from "../crm/CreateTicketModal";
 import { AddSubscriptionModal } from "../subscriptions/AddSubscriptionModal";
@@ -220,6 +220,30 @@ export const CustomerDetail = () => {
     });
 
     const customerComplaints = complaintsData?.data?.result || [];
+
+    // Fetch ALL orders for this customer to compute lifetime stats
+    const { data: customerOrdersData } = useQuery({
+        queryKey: ["customerOrders", customer?._id],
+        queryFn: () => getOrders({ customer: customer._id }),
+        enabled: !!customer?._id,
+    });
+
+    const orderStats = useMemo(() => {
+        const orders = customerOrdersData?.result || [];
+        const delivered = orders.filter(o => o.status === 'delivered');
+        const totalOrders = orders.length;
+        const deliveredOrders = delivered.length;
+        const lifetimeValue = delivered.reduce((sum, o) => sum + (o.totalAmount || 0), 0);
+        const pendingOrders = orders.filter(o => o.status === 'pending').length;
+        const cancelledOrders = orders.filter(o => o.status === 'cancelled').length;
+        const thisMonthOrders = orders.filter(o => {
+            const d = new Date(o.deliveryDate || o.createdAt);
+            const now = new Date();
+            return d.getMonth() === now.getMonth() && d.getFullYear() === now.getFullYear();
+        });
+        const thisMonthValue = thisMonthOrders.filter(o => o.status === 'delivered').reduce((sum, o) => sum + (o.totalAmount || 0), 0);
+        return { totalOrders, deliveredOrders, lifetimeValue, pendingOrders, cancelledOrders, thisMonthValue };
+    }, [customerOrdersData]);
 
     const updateCalendarMutation = useMutation({
         mutationFn: async ({ date, subscriptions }) => {
@@ -871,6 +895,46 @@ export const CustomerDetail = () => {
                             <button className="btn btn-xs btn-ghost" onClick={() => setIsCreditLimitModalOpen(true)}>✏️</button>
                         </h3>
                         <p className="text-gray-500">Credit Limit</p>
+                    </div>
+                </div>
+            </div>
+
+            {/* Order Stats Cards */}
+            <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-3">
+                <div className="card bg-gradient-to-br from-indigo-500 to-purple-600 shadow-lg">
+                    <div className="card-body p-4 text-white">
+                        <h3 className="text-2xl font-bold">₹ {orderStats.lifetimeValue.toLocaleString('en-IN')}</h3>
+                        <p className="text-indigo-100 text-sm">Lifetime Order Value</p>
+                    </div>
+                </div>
+                <div className="card bg-gradient-to-br from-blue-500 to-cyan-500 shadow-lg">
+                    <div className="card-body p-4 text-white">
+                        <h3 className="text-2xl font-bold">{orderStats.totalOrders}</h3>
+                        <p className="text-blue-100 text-sm">Total Orders</p>
+                    </div>
+                </div>
+                <div className="card bg-gradient-to-br from-green-500 to-emerald-500 shadow-lg">
+                    <div className="card-body p-4 text-white">
+                        <h3 className="text-2xl font-bold">{orderStats.deliveredOrders}</h3>
+                        <p className="text-green-100 text-sm">Delivered</p>
+                    </div>
+                </div>
+                <div className="card bg-gradient-to-br from-amber-500 to-orange-500 shadow-lg">
+                    <div className="card-body p-4 text-white">
+                        <h3 className="text-2xl font-bold">{orderStats.pendingOrders}</h3>
+                        <p className="text-amber-100 text-sm">Pending</p>
+                    </div>
+                </div>
+                <div className="card bg-gradient-to-br from-rose-500 to-red-500 shadow-lg">
+                    <div className="card-body p-4 text-white">
+                        <h3 className="text-2xl font-bold">{orderStats.cancelledOrders}</h3>
+                        <p className="text-rose-100 text-sm">Cancelled</p>
+                    </div>
+                </div>
+                <div className="card bg-gradient-to-br from-teal-500 to-cyan-600 shadow-lg">
+                    <div className="card-body p-4 text-white">
+                        <h3 className="text-2xl font-bold">₹ {orderStats.thisMonthValue.toLocaleString('en-IN')}</h3>
+                        <p className="text-teal-100 text-sm">This Month</p>
                     </div>
                 </div>
             </div>

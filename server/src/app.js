@@ -169,6 +169,7 @@ app.use("/api/admin", require("./routes/adminUtilRoutes")); // Admin utilities (
 app.use("/api/crm", apiLimiter, require("./routes/crmRoutes")); // CRM and lead management
 app.use("/api/routes", apiLimiter, require("./routes/routeRoutes")); // Route optimization
 app.use("/api/tracking", apiLimiter, require("./routes/trackingRoutes")); // GPS tracking
+app.use("/api/ai", apiLimiter, require("./routes/aiRoutes")); // AI Assistant
 
 // 404 Handler
 app.use((req, res) => {

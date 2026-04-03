@@ -561,6 +561,18 @@ async function getWalletSummary() {
         { $sort: { total: -1 } }
     ]);
 
+    // Total Advance Payment In Hand = sum of all positive wallet balances across customers
+    const advanceResult = await User.aggregate([
+        { $match: { role: "CUSTOMER", walletBalance: { $gt: 0 } } },
+        { $group: { _id: null, total: { $sum: "$walletBalance" }, count: { $sum: 1 } } }
+    ]);
+
+    // Total negative balance (customers who owe money)
+    const negativeResult = await User.aggregate([
+        { $match: { role: "CUSTOMER", walletBalance: { $lt: 0 } } },
+        { $group: { _id: null, total: { $sum: "$walletBalance" }, count: { $sum: 1 } } }
+    ]);
+
     return {
         totalCredits: credits[0]?.total || 0,
         creditCount: credits[0]?.count || 0,
@@ -568,6 +580,10 @@ async function getWalletSummary() {
         debitCount: debits[0]?.count || 0,
         netFlow: (credits[0]?.total || 0) - (debits[0]?.total || 0),
         modeSplit: modeSplit.map(m => ({ mode: m._id || "Unknown", amount: m.total, count: m.count })),
+        advanceInHand: advanceResult[0]?.total || 0,
+        advanceCustomerCount: advanceResult[0]?.count || 0,
+        negativeBalance: Math.abs(negativeResult[0]?.total || 0),
+        negativeCustomerCount: negativeResult[0]?.count || 0,
     };
 }
 

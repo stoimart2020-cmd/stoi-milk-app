@@ -644,9 +644,9 @@ exports.uploadCustomers = async (req, res) => {
                 const getFieldValue = (r, ...keys) => {
                     const rowKeys = Object.keys(r);
                     for (const key of keys) {
-                        const lowerTarget = key.toLowerCase().trim();
+                        const lowerTarget = String(key).toLowerCase().replace(/\s+/g, '').trim();
                         for (const rKey of rowKeys) {
-                            if (rKey.toLowerCase().trim() === lowerTarget) {
+                            if (String(rKey).toLowerCase().replace(/\s+/g, '').trim() === lowerTarget) {
                                 const val = r[rKey];
                                 if (val !== undefined && val !== null && String(val).trim() !== "") {
                                     return val;
@@ -693,7 +693,7 @@ exports.uploadCustomers = async (req, res) => {
                 let name = getFieldValue(row, "Name", "Full Name", "firstName", "Customer Name", "Customer_1", "Customer_2", "Customer");
                 let email = getFieldValue(row, "Email Id", "Email ID", "email", "Email");
                 let addressStr = getFieldValue(row, "Address", "Full Address", "Location");
-                let walletBalanceStr = getFieldValue(row, "Wallet Balance", "Effective Wallet Balance", "Wallet", "walletBalance", "wallet_balance", "Wallet Bal", "Effective E", "Effective Bal");
+                let walletBalanceStr = getFieldValue(row, "Wallet Balance", "Effective Wallet Balance", "Wallet", "walletBalance", "wallet_balance", "Wallet Bal", "Effective E", "Effective Bal", "Current Balance", "Balance", "Account Balance", "Amount");
                 let statusStr = getFieldValue(row, "Status", "Sub. Status", "Sub Status", "isActive");
                 let isBlockedStr = getFieldValue(row, "Is Blocked", "isBlocked");
                 let tempStatusStr = getFieldValue(row, "Temp Customer Status", "Temp Status", "temporaryStatus");
@@ -757,12 +757,18 @@ exports.uploadCustomers = async (req, res) => {
                     if (typeof walletBalanceStr === 'number') {
                         walletBalance = walletBalanceStr;
                     } else {
-                        let str = String(walletBalanceStr);
-                        let isNegative = str.includes('-') || (str.includes('(') && str.includes(')'));
-                        let stripped = str.replace(/[^0-9.]+/g, "");
-                        let parsed = parseFloat(stripped);
-                        if (!isNaN(parsed)) {
-                            walletBalance = isNegative ? -Math.abs(parsed) : Math.abs(parsed);
+                        let str = String(walletBalanceStr).trim();
+                        if (str === '-' || str === '') {
+                            walletBalance = 0;
+                        } else {
+                            let isNegative = str.includes('-') || (str.includes('(') && str.includes(')'));
+                            let stripped = str.replace(/[^\d.]/g, ""); // Keep only digits and decimal point
+                            let parsed = parseFloat(stripped);
+                            if (!isNaN(parsed)) {
+                                walletBalance = isNegative ? -Math.abs(parsed) : Math.abs(parsed);
+                            } else {
+                                walletBalance = 0;
+                            }
                         }
                     }
 

@@ -7,6 +7,7 @@ import toast from "react-hot-toast";
 import { AdminFooter } from "../components/AdminFooter";
 import { AdminHeader } from "../components/AdminHeader";
 import { FilterProvider } from "../shared/context/FilterContext";
+import { AiAssistantWidget } from "../shared/components/AiAssistantWidget";
 
 export const AdministratorDashboard = () => {
   return (
@@ -132,6 +133,7 @@ const DashboardContent = () => {
           <div className="flex-1 p-6">
             <Outlet />
           </div>
+          <AiAssistantWidget />
           <AdminFooter />
         </main>
       </div>
