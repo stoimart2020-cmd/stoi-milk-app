@@ -24,9 +24,10 @@ const bottleTransactionSchema = new mongoose.Schema(
         },
         type: {
             type: String,
-            enum: ["issued", "returned", "adjustment"],
+            enum: ["issued", "returned", "broken", "unreturned_penalty", "penalty_reversed"],
             required: true,
         },
+        penaltyAmount: { type: Number, default: 0 },
         quantity: {
             type: Number,
             required: true,

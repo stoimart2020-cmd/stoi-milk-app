@@ -16,6 +16,7 @@ const bottleController = require('../controllers/bottleController');
  * @access  Private (Rider/Admin)
  */
 router.post('/transaction', protect, bottleController.recordBottleTransaction);
+router.post('/report-broken', protect, bottleController.reportBrokenBottle);
 
 /**
  * @route   GET /api/bottles/transactions

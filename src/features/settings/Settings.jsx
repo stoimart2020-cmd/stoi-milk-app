@@ -49,6 +49,7 @@ export const Settings = () => {
         { id: "referral", label: "🎁 Referral", icon: "🎁" },
         { id: "firebase", label: "🔥 Firebase", icon: "🔥" },
         { id: "manualEmail", label: "📤 Manual Mailer", icon: "📤" },
+        { id: "bottle", label: "🍼 Bottle Management", icon: "🍼" },
     ];
 
     if (isLoading) {
@@ -112,6 +113,7 @@ export const Settings = () => {
                             {activeTab === "referral" && <ReferralSettings settings={settings.referral} onSave={(data) => mutation.mutate({ section: "referral", data })} />}
                             {activeTab === "firebase" && <FirebaseSettings settings={settings.firebase} onSave={(data) => mutation.mutate({ section: "firebase", data })} />}
                             {activeTab === "manualEmail" && <ManualEmailSettings settings={settings} />}
+                            {activeTab === "bottle" && <BottleSettings />}
                         </div>
                     </div>
                 </div>
@@ -2061,3 +2063,121 @@ const FirebaseSettings = ({ settings = {}, onSave }) => {
     );
 };
 
+// Bottle Management Settings
+const BottleSettings = () => {
+    const { data: productsData, isLoading, refetch } = useQuery({
+        queryKey: ["products-bottle-settings"],
+        queryFn: async () => {
+            const response = await axiosInstance.get("/api/products?limit=100");
+            return response.data;
+        }
+    });
+
+    const products = (productsData?.result || []).filter(p => p.reverseLogistic);
+
+    const updatePenaltyMutation = useMutation({
+        mutationFn: async ({ productId, data }) => {
+            const response = await axiosInstance.put(`/api/products/${productId}`, data);
+            return response.data;
+        },
+        onSuccess: () => {
+            alert("Bottle charges updated!");
+            refetch();
+        },
+        onError: (err) => {
+            alert(err.response?.data?.message || "Failed to update charges");
+        }
+    });
+
+    if (isLoading) return <div className="loading loading-spinner"></div>;
+
+    if (products.length === 0) {
+        return (
+            <div className="p-4 text-center">
+                <p className="text-gray-500 italic">No products found with 'Reverse Logistic' enabled.</p>
+                <p className="text-sm mt-2">Enable 'Reverse Logistic' in Product Edit to see them here.</p>
+            </div>
+        );
+    }
+
+    return (
+        <div className="space-y-6">
+            <div className="flex justify-between items-center">
+                <h2 className="text-xl font-bold">🍼 Bottle Penalty Management</h2>
+                <div className="badge badge-primary">{products.length} Products</div>
+            </div>
+
+            <div className="overflow-x-auto">
+                <table className="table table-zebra w-full">
+                    <thead>
+                        <tr>
+                            <th>Product Name</th>
+                            <th>Broken Bottle Charge (₹)</th>
+                            <th>Unreturned Bottle Charge (₹)</th>
+                            <th>Action</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {products.map(product => (
+                            <BottleProductRow 
+                                key={product._id} 
+                                product={product} 
+                                onSave={(data) => updatePenaltyMutation.mutate({ productId: product._id, data })}
+                                isSaving={updatePenaltyMutation.isPending}
+                            />
+                        ))}
+                    </tbody>
+                </table>
+            </div>
+
+            <div className="alert alert-info shadow-sm mt-4">
+                <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" className="stroke-current shrink-0 w-6 h-6"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"></path></svg>
+                <div>
+                    <h3 className="font-bold text-sm">Sunday Automated Penalties</h3>
+                    <p className="text-xs">Unreturned charges are automatically deducted from customer wallets every Sunday at 23:59 for any outstanding bottles of these types.</p>
+                </div>
+            </div>
+        </div>
+    );
+};
+
+const BottleProductRow = ({ product, onSave, isSaving }) => {
+    const [broken, setBroken] = useState(product.brokenBottleCharge || 0);
+    const [unreturned, setUnreturned] = useState(product.unreturnedBottleCharge || 0);
+
+    const hasChanged = broken !== (product.brokenBottleCharge || 0) || unreturned !== (product.unreturnedBottleCharge || 0);
+
+    return (
+        <tr>
+            <td>
+                <div className="font-bold">{product.name}</div>
+                <div className="text-xs opacity-50">{product.unitValue} {product.unit}</div>
+            </td>
+            <td>
+                <input 
+                    type="number" 
+                    className="input input-sm input-bordered w-24" 
+                    value={broken} 
+                    onChange={(e) => setBroken(Number(e.target.value))} 
+                />
+            </td>
+            <td>
+                <input 
+                    type="number" 
+                    className="input input-sm input-bordered w-24" 
+                    value={unreturned} 
+                    onChange={(e) => setUnreturned(Number(e.target.value))} 
+                />
+            </td>
+            <td>
+                <button 
+                    disabled={!hasChanged || isSaving}
+                    className={`btn btn-sm ${hasChanged ? 'btn-primary' : 'btn-ghost'}`}
+                    onClick={() => onSave({ brokenBottleCharge: broken, unreturnedBottleCharge: unreturned })}
+                >
+                    {isSaving ? <span className="loading loading-spinner loading-xs"></span> : "Save"}
+                </button>
+            </td>
+        </tr>
+    );
+};

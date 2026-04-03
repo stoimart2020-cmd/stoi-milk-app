@@ -3,6 +3,7 @@ const seedData = require("./utils/seeder");
 const cron = require('node-cron');
 const invoiceController = require('./controllers/invoiceController');
 const { initializeCronJobs } = require('./jobs/dynamicCronJobs');
+const { initBottleCron } = require('./jobs/bottleCron');
 const { initializeFirebase } = require('./config/firebase');
 
 const PORT = process.env.PORT || 4000;
@@ -42,6 +43,7 @@ app.listen(PORT, async () => {
         // Initialize dynamic cron jobs (subscription payments & auto-assignment)
         // These run 1 second after the cutoff time configured in settings
         await initializeCronJobs();
+        await initBottleCron();
     } catch (initError) {
         console.error('Server Initialization Error:', initError);
     }

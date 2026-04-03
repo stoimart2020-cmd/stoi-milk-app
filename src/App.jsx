@@ -52,6 +52,7 @@ import { VendorManagement } from "./features/inventory/VendorManagement";
 import { MilkReception } from "./features/inventory/MilkReception";
 import { StockAnalytics } from "./features/inventory/StockAnalytics";
 import { MilkCollectionSummary } from "./features/inventory/MilkCollectionSummary";
+import { BrokenBottles } from "./features/inventory/BrokenBottles";
 
 import ErrorBoundary from "./components/ErrorBoundary";
 import { CompleteProfile } from "./features/auth/CompleteProfile";
@@ -286,6 +287,10 @@ function AppRoute() {
         {
           path: "inventory/collection-summary",
           element: <MilkCollectionSummary />,
+        },
+        {
+          path: "inventory/broken-bottles",
+          element: <BrokenBottles />,
         },
         {
           path: "riders",

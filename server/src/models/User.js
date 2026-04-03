@@ -150,6 +150,11 @@ const userSchema = new mongoose.Schema(
         followUpDate: { type: Date },
         openTickets: { type: Number, default: 0 },
         remainingBottles: { type: Number, default: 0 },
+        bottleBalances: [{
+            product: { type: mongoose.Schema.Types.ObjectId, ref: 'Product' },
+            pending: { type: Number, default: 0 }, // Unreturned bottles of this type
+            penalized: { type: Number, default: 0 } // Bottles already charged for (Sunday penalty)
+        }],
         bottleDeposit: { type: Number, default: 0 }, // Total deposit amount for bottles
         assetsInHand: [{ type: String }], // Asset tracking numbers
         adjustmentSoFar: { type: Number, default: 0 },

@@ -13,7 +13,7 @@ export const RiderDeliveryDetailModal = ({
     onDeliverNewProduct
 }) => {
     const [localProducts, setLocalProducts] = useState([]);
-    const [bottleCount, setBottleCount] = useState(0);
+    const [bottleData, setBottleData] = useState({}); // { [productId]: { returned: 0, broken: 0 } }
     const [cashAmount, setCashAmount] = useState("");
     const [chequeAmount, setChequeAmount] = useState("");
     const [chequeNumber, setChequeNumber] = useState("");
@@ -38,7 +38,17 @@ export const RiderDeliveryDetailModal = ({
     useEffect(() => {
         if (isOpen && delivery) {
             setLocalProducts(delivery.products ? JSON.parse(JSON.stringify(delivery.products)) : []);
-            setBottleCount(0);
+            
+            // Initialize bottle Data from customer balances
+            const balances = delivery.customer?.bottleBalances || [];
+            const initialBottleData = {};
+            balances.forEach(b => {
+                const pid = b.product?._id || b.product;
+                if (pid) {
+                    initialBottleData[pid] = { returned: 0, broken: 0, name: b.product?.name || "Unknown Product", pending: b.pending || 0 };
+                }
+            });
+            setBottleData(initialBottleData);
             setCashAmount("");
             setChequeAmount("");
             setChequeNumber("");
@@ -102,10 +112,21 @@ export const RiderDeliveryDetailModal = ({
         const deliveredAssets = deliveredAssetsInput.split(',').map(s => s.trim()).filter(s => s);
         const returnedAssets = returnedAssetsInput.split(',').map(s => s.trim()).filter(s => s);
 
+        // Convert bottleData to the format expected by backend
+        const bottleReturns = {};
+        const brokenBottles = {};
+        Object.keys(bottleData).forEach(pid => {
+            if (bottleData[pid].returned > 0) bottleReturns[pid] = bottleData[pid].returned;
+            if (bottleData[pid].broken > 0) brokenBottles[pid] = bottleData[pid].broken;
+        });
+
         const payload = {
             deliveryId: delivery._id,
             status: finalStatus,
-            bottlesReturned: bottleCount,
+            bottleReturns,
+            brokenBottles,
+            // For backward compatibility (global sum)
+            bottlesReturned: Object.values(bottleReturns).reduce((sum, val) => sum + val, 0),
             cashAmount,
             chequeAmount,
             chequeNumber,
@@ -345,28 +366,82 @@ export const RiderDeliveryDetailModal = ({
                     </button>
                 </div>
 
-                {/* Empty Bottle */}
-                <h3 className="text-[#150a33] text-[18px] mb-3">Empty Bottle</h3>
-                <div className="bg-[#f8f9fa] rounded-2xl p-4 shadow-sm border border-gray-100 flex items-center justify-between mb-8">
-                    <div>
-                        <h4 className="text-[16px] font-normal text-black">Collect Bottles</h4>
-                        <p className="text-[13px] text-gray-500">From customer</p>
-                    </div>
-                    <div className="flex items-center gap-4">
-                        <button
-                            className="w-8 h-8 rounded-md bg-[#12b8b0] text-white flex items-center justify-center shadow-sm"
-                            onClick={() => setBottleCount(Math.max(0, bottleCount - 1))}
-                        >
-                            <Minus size={16} />
-                        </button>
-                        <span className="text-[24px] font-medium w-6 text-center">{bottleCount}</span>
-                        <button
-                            className="w-8 h-8 rounded-md bg-[#12b8b0] text-white flex items-center justify-center shadow-sm"
-                            onClick={() => setBottleCount(bottleCount + 1)}
-                        >
-                            <Plus size={16} />
-                        </button>
-                    </div>
+                {/* Per-Product Bottle Management */}
+                <h3 className="text-[#150a33] text-[18px] mb-3">Bottle Collection & Broken</h3>
+                <div className="space-y-4 mb-8">
+                    {Object.keys(bottleData).length > 0 ? (
+                        Object.keys(bottleData).map((pid) => {
+                            const data = bottleData[pid];
+                            return (
+                                <div key={pid} className="bg-[#f8f9fa] rounded-2xl p-4 shadow-sm border border-gray-100 space-y-4">
+                                    <div className="flex justify-between items-center border-b pb-2">
+                                        <div>
+                                            <h4 className="text-[16px] font-bold text-black">{data.name}</h4>
+                                            <p className="text-[12px] text-orange-500 font-medium">Pending: {data.pending} bottles</p>
+                                        </div>
+                                    </div>
+                                    
+                                    <div className="grid grid-cols-2 gap-4">
+                                        {/* Returned Column */}
+                                        <div className="flex flex-col items-center gap-2">
+                                            <span className="text-[12px] uppercase font-bold text-teal-600">Returned</span>
+                                            <div className="flex items-center gap-3">
+                                                <button
+                                                    className="w-7 h-7 rounded-full bg-teal-100 text-teal-700 flex items-center justify-center"
+                                                    onClick={() => setBottleData(prev => ({ 
+                                                        ...prev, 
+                                                        [pid]: { ...prev[pid], returned: Math.max(0, prev[pid].returned - 1) } 
+                                                    }))}
+                                                >
+                                                    <Minus size={14} />
+                                                </button>
+                                                <span className="text-[18px] font-bold w-4 text-center">{data.returned}</span>
+                                                <button
+                                                    className="w-7 h-7 rounded-full bg-teal-100 text-teal-700 flex items-center justify-center"
+                                                    onClick={() => setBottleData(prev => ({ 
+                                                        ...prev, 
+                                                        [pid]: { ...prev[pid], returned: prev[pid].returned + 1 } 
+                                                    }))}
+                                                >
+                                                    <Plus size={14} />
+                                                </button>
+                                            </div>
+                                        </div>
+
+                                        {/* Broken Column */}
+                                        <div className="flex flex-col items-center gap-2">
+                                            <span className="text-[12px] uppercase font-bold text-red-600">Broken</span>
+                                            <div className="flex items-center gap-3">
+                                                <button
+                                                    className="w-7 h-7 rounded-full bg-red-100 text-red-700 flex items-center justify-center"
+                                                    onClick={() => setBottleData(prev => ({ 
+                                                        ...prev, 
+                                                        [pid]: { ...prev[pid], broken: Math.max(0, prev[pid].broken - 1) } 
+                                                    }))}
+                                                >
+                                                    <Minus size={14} />
+                                                </button>
+                                                <span className="text-[18px] font-bold w-4 text-center">{data.broken}</span>
+                                                <button
+                                                    className="w-7 h-7 rounded-full bg-red-100 text-red-700 flex items-center justify-center"
+                                                    onClick={() => setBottleData(prev => ({ 
+                                                        ...prev, 
+                                                        [pid]: { ...prev[pid], broken: prev[pid].broken + 1 } 
+                                                    }))}
+                                                >
+                                                    <Plus size={14} />
+                                                </button>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+                            );
+                        })
+                    ) : (
+                        <div className="text-gray-400 text-sm italic py-4 bg-gray-50 rounded-xl text-center border border-dashed">
+                            No bottles pending for this customer.
+                        </div>
+                    )}
                 </div>
 
                 {/* Asset Tracking Inputs */}

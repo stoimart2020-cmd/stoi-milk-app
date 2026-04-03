@@ -475,7 +475,14 @@ exports.getAssignedOrders = async (req, res) => {
         // If no status specified, return ALL assigned orders (let frontend filter)
 
         const orders = await Order.find(query)
-            .populate("customer", "name mobile address")
+            .populate({
+                path: "customer",
+                select: "name mobile address bottleBalances remainingBottles",
+                populate: {
+                    path: "bottleBalances.product",
+                    select: "name shortDescription"
+                }
+            })
             .populate("products.product", "name price")
             .sort({ deliveryDate: -1 }); // Sort by delivery date descending (most recent first)
 
@@ -489,7 +496,7 @@ exports.updateOrderStatus = async (req, res) => {
     try {
         const { id } = req.params;
         const {
-            status, bottlesReturned,
+            status, bottlesReturned, bottlesBroken,
             cashAmount, chequeAmount, chequeNumber,
             note, noteType, cancelReason, deliveryProofImages, products,
             deliveredAssets, returnedAssets, bypassAssetWarning
@@ -630,21 +637,37 @@ exports.updateOrderStatus = async (req, res) => {
             if (customer && !order.bottlesProcessed) {
                 let balanceChanged = false;
                 const BottleTransaction = require("../models/BottleTransaction");
+                const Transaction = require("../models/Transaction");
+                const Product = require("../models/Product");
 
                 // 1. Issue Bottles (What the customer is taking today)
                 if (order.bottlesIssued > 0) {
                     customer.remainingBottles = (customer.remainingBottles || 0) + order.bottlesIssued;
                     balanceChanged = true;
 
-                    await BottleTransaction.create({
-                        customer: customer._id,
-                        rider: req.user._id,
-                        order: order._id,
-                        type: "issued",
-                        quantity: order.bottlesIssued,
-                        notes: `Issued via Order #${order.orderId || order._id}`,
-                        recordedBy: req.user._id
-                    });
+                    // Update per-product pending balances
+                    for (const item of order.products) {
+                        const productDef = await Product.findById(item.product._id || item.product);
+                        if (productDef && productDef.reverseLogistic) {
+                            let balance = customer.bottleBalances.find(b => b.product.toString() === productDef._id.toString());
+                            if (!balance) {
+                                balance = { product: productDef._id, pending: 0, penalized: 0 };
+                                customer.bottleBalances.push(balance);
+                            }
+                            balance.pending += item.quantity;
+
+                            await BottleTransaction.create({
+                                customer: customer._id,
+                                rider: req.user._id,
+                                order: order._id,
+                                product: productDef._id,
+                                type: "issued",
+                                quantity: item.quantity,
+                                notes: `Issued via Order #${order.orderId || order._id}`,
+                                recordedBy: req.user._id
+                            });
+                        }
+                    }
                 }
                 
                 // Add Assets to hand
@@ -654,20 +677,108 @@ exports.updateOrderStatus = async (req, res) => {
                     balanceChanged = true;
                 }
 
-                // 2. Return Bottles (What the rider collected today)
-                const collectedQty = Number(bottlesReturned) || 0;
-                if (collectedQty > 0) {
-                    order.bottlesReturned = collectedQty;
-                    customer.remainingBottles = Math.max(0, (customer.remainingBottles || 0) - collectedQty);
+                // 2. Handle Returns (What the rider collected today)
+                // bottlesReturned can be a Number (old) or Object { [productId]: qty } (new)
+                const returnsMap = (typeof bottlesReturned === 'object' && bottlesReturned !== null) 
+                    ? bottlesReturned 
+                    : (order.bottlesIssued > 0 && Number(bottlesReturned) > 0) // Backward compat: assume first reverseLogistic product
+                        ? { [(order.products.find(p => p.product?.reverseLogistic)?.product?._id || order.products[0]?.product?._id || order.products[0]?.product).toString()]: Number(bottlesReturned) }
+                        : {};
+
+                let totalCollectedQty = 0;
+                for (const [prodId, qty] of Object.entries(returnsMap)) {
+                    const collectedQty = Number(qty) || 0;
+                    if (collectedQty <= 0) continue;
+
+                    totalCollectedQty += collectedQty;
+                    const productDef = await Product.findById(prodId);
+                    
+                    // Update bottle balances
+                    let balance = customer.bottleBalances.find(b => b.product.toString() === prodId);
+                    if (balance) {
+                        balance.pending = Math.max(0, balance.pending - collectedQty);
+                        
+                        // Check if we need to refund for previously penalized bottles
+                        if (balance.penalized > 0 && productDef && productDef.unreturnedBottleCharge > 0) {
+                            const refundQty = Math.min(collectedQty, balance.penalized);
+                            const refundAmount = refundQty * productDef.unreturnedBottleCharge;
+                            
+                            balance.penalized -= refundQty;
+                            customer.walletBalance += refundAmount;
+                            
+                            // Log Wallet Credit
+                            await Transaction.create({
+                                user: customer._id,
+                                amount: refundAmount,
+                                type: "CREDIT",
+                                mode: "WALLET",
+                                status: "SUCCESS",
+                                description: `Refund: Returned ${refundQty} penalized ${productDef.name} bottles`,
+                                order: order._id,
+                                balanceAfter: customer.walletBalance
+                            });
+                        }
+                    }
+
+                    await BottleTransaction.create({
+                        customer: customer._id,
+                        rider: req.user._id,
+                        order: order._id,
+                        product: prodId,
+                        type: "returned",
+                        quantity: collectedQty,
+                        notes: "Collected on delivery",
+                        recordedBy: req.user._id,
+                    });
+                }
+
+                if (totalCollectedQty > 0) {
+                    order.bottlesReturned = totalCollectedQty;
+                    customer.remainingBottles = Math.max(0, (customer.remainingBottles || 0) - totalCollectedQty);
+                    balanceChanged = true;
+                }
+
+                // 3. Handle Broken Bottles reported during delivery
+                const brokenMap = (typeof bottlesBroken === 'object' && bottlesBroken !== null) ? bottlesBroken : {};
+                for (const [prodId, qty] of Object.entries(brokenMap)) {
+                    const brokenQty = Number(qty) || 0;
+                    if (brokenQty <= 0) continue;
+
+                    const productDef = await Product.findById(prodId);
+                    const charge = (productDef?.brokenBottleCharge || 0) * brokenQty;
+
+                    if (charge > 0) {
+                        customer.walletBalance -= charge;
+                        await Transaction.create({
+                            user: customer._id,
+                            amount: charge,
+                            type: "DEBIT",
+                            mode: "WALLET",
+                            status: "SUCCESS",
+                            description: `Broken Bottle Charge: ${brokenQty} x ${productDef.name}`,
+                            order: order._id,
+                            balanceAfter: customer.walletBalance
+                        });
+                    }
+
+                    // Update balance (decrement pending)
+                    let balance = customer.bottleBalances.find(b => b.product.toString() === prodId);
+                    if (balance) {
+                        balance.pending = Math.max(0, balance.pending - brokenQty);
+                    }
+                    
+                    customer.remainingBottles = Math.max(0, (customer.remainingBottles || 0) - brokenQty);
                     balanceChanged = true;
 
                     await BottleTransaction.create({
                         customer: customer._id,
                         rider: req.user._id,
                         order: order._id,
-                        type: "returned",
-                        quantity: collectedQty,
-                        notes: "Collected on delivery",
+                        product: prodId,
+                        type: "broken",
+                        quantity: brokenQty,
+                        penaltyAmount: charge,
+                        notes: "Reported during delivery",
                         recordedBy: req.user._id,
                     });
                 }

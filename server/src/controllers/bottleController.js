@@ -26,17 +26,40 @@ exports.recordBottleTransaction = async (req, res) => {
             recordedBy: req.user._id,
         });
 
-        // Update customer's remainingBottles
+        // Update customer's remainingBottles and bottleBalances
         const customer = await User.findById(customerId);
         if (customer) {
             if (type === "issued") {
                 customer.remainingBottles = (customer.remainingBottles || 0) + quantity;
+                // Update per-product balance if productId is provided
+                if (productId) {
+                    let balance = customer.bottleBalances.find(b => b.product.toString() === productId.toString());
+                    if (!balance) {
+                        balance = { product: productId, pending: 0, penalized: 0 };
+                        customer.bottleBalances.push(balance);
+                    }
+                    balance.pending += quantity;
+                }
             } else if (type === "returned") {
-                customer.remainingBottles = (customer.remainingBottles || 0) - quantity;
+                customer.remainingBottles = Math.max(0, (customer.remainingBottles || 0) - quantity);
+                // Update per-product balance if productId is provided
+                if (productId) {
+                    let balance = customer.bottleBalances.find(b => b.product.toString() === productId.toString());
+                    if (balance) {
+                        balance.pending = Math.max(0, balance.pending - quantity);
+                    }
+                }
             } else if (type === "adjustment") {
-                // For adjustments, quantity can be positive or negative based on notes
-                // Positive adjustment = add bottles, Negative = subtract
                 customer.remainingBottles = (customer.remainingBottles || 0) + quantity;
+                // Update per-product balance if productId is provided
+                if (productId) {
+                    let balance = customer.bottleBalances.find(b => b.product.toString() === productId.toString());
+                    if (!balance) {
+                        balance = { product: productId, pending: 0, penalized: 0 };
+                        customer.bottleBalances.push(balance);
+                    }
+                    balance.pending = Math.max(0, balance.pending + quantity);
+                }
             }
             await customer.save();
         }
@@ -279,6 +302,78 @@ exports.getRiderBottleStats = async (req, res) => {
                 bottlesToCollect: totalToCollect,
                 ordersCount: assignedOrders.length,
             },
+        });
+    } catch (error) {
+        res.status(500).json({ success: false, message: error.message });
+    }
+};
+// Report broken bottles and deduct charge from wallet
+exports.reportBrokenBottle = async (req, res) => {
+    try {
+        const { customerId, productId, quantity, notes } = req.body;
+
+        if (!customerId || !productId || !quantity) {
+            return res.status(400).json({
+                success: false,
+                message: "customerId, productId, and quantity are required",
+            });
+        }
+
+        const customer = await User.findById(customerId);
+        if (!customer) {
+            return res.status(404).json({ success: false, message: "Customer not found" });
+        }
+
+        const Product = require("../models/Product");
+        const product = await Product.findById(productId);
+        if (!product) {
+            return res.status(404).json({ success: false, message: "Product not found" });
+        }
+
+        const charge = (product.brokenBottleCharge || 0) * quantity;
+        const Transaction = require("../models/Transaction");
+
+        // 1. Deduct from wallet if charge > 0
+        if (charge > 0) {
+            customer.walletBalance -= charge;
+            await Transaction.create({
+                user: customer._id,
+                amount: charge,
+                type: "DEBIT",
+                mode: "WALLET",
+                status: "SUCCESS",
+                description: `Broken Bottle Charge: ${quantity} x ${product.name}`,
+                balanceAfter: customer.walletBalance,
+                performedBy: req.user._id
+            });
+        }
+
+        // 2. Update bottle balances
+        customer.remainingBottles = Math.max(0, (customer.remainingBottles || 0) - quantity);
+        let balance = customer.bottleBalances.find(b => b.product.toString() === productId.toString());
+        if (balance) {
+            balance.pending = Math.max(0, balance.pending - quantity);
+        }
+
+        await customer.save();
+
+        // 3. Log Bottle Transaction
+        const transaction = await BottleTransaction.create({
+            customer: customerId,
+            rider: req.user.role === "RIDER" ? req.user._id : null,
+            product: productId,
+            type: "broken",
+            quantity,
+            penaltyAmount: charge,
+            notes: notes || "Manual report",
+            recordedBy: req.user._id,
+        });
+
+        res.status(200).json({
+            success: true,
+            message: `Broken bottle reported. ₹${charge} deducted from wallet.`,
+            result: transaction,
+            walletBalance: customer.walletBalance
         });
     } catch (error) {
         res.status(500).json({ success: false, message: error.message });

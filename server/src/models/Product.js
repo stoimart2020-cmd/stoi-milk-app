@@ -179,6 +179,10 @@ const productSchema = new mongoose.Schema(
         cutoffTime: { type: String }, // Product-specific cutoff time (e.g., "17:00")
         cutoffDay: { type: Number }, // -1 = Previous Day, 0 = Same Day
 
+        // Bottle Penalty fields
+        brokenBottleCharge: { type: Number, default: 0 },
+        unreturnedBottleCharge: { type: Number, default: 0 },
+
         // Statistics
         totalSold: { type: Number, default: 0 },
         viewCount: { type: Number, default: 0 },
