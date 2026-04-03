@@ -18,8 +18,23 @@ export const getRiderLocationHistory = async (riderId, limit = 50) => {
     return data;
 };
 
-// Get tracking summary for dashboard
 export const getTrackingSummary = async () => {
     const { data } = await axiosInstance.get("/api/tracking/summary");
+    return data;
+};
+
+// Log Location Telemetry
+export const startTracking = async () => {
+    const { data } = await axiosInstance.post("/api/tracking/start");
+    return data;
+};
+
+export const updateLocation = async (locationData) => {
+    const { data } = await axiosInstance.post("/api/tracking/update-location", locationData);
+    return data;
+};
+
+export const stopTracking = async () => {
+    const { data } = await axiosInstance.post("/api/tracking/stop");
     return data;
 };

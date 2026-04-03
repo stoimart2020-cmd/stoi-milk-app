@@ -9,7 +9,8 @@ import {
     getDeliveryPoints, createDeliveryPoint, updateDeliveryPoint, deleteDeliveryPoint,
     getDeliveryRoutes, createDeliveryRoute, updateDeliveryRoute, deleteDeliveryRoute,
     getLogisticsForecast, getDailyStockStatus, addProductionLog,
-    getTruckDrivers, updateTruckDriverHubs
+    getTruckDrivers, updateTruckDriverHubs,
+    getVehicles, getTruckTrips
 } from "../../shared/api/logistics";
 import { getDeliveryOrders } from "../../shared/api/delivery";
 import { getAllProducts } from "../../shared/api/products";
@@ -25,6 +26,7 @@ const TABS = [
     { key: "reconciliation", label: "Inventory Reconciliation", icon: Scale, singular: "Reconciliation" },
     { key: "loading-sheets", label: "Rider Loading Sheets", icon: ClipboardList, singular: "Loading Sheet" },
     { key: "truck-routes", label: "Truck Routes", icon: Truck, singular: "Truck Route" },
+    { key: "fleet", label: "Fleet & Trips", icon: Zap, singular: "Vehicle" },
     { key: "factories", label: "Factories", icon: Building, singular: "Factory" },
     { key: "districts", label: "Districts", icon: MapIcon, singular: "District" },
     { key: "cities", label: "Cities", icon: Globe, singular: "City" },
@@ -1582,6 +1584,7 @@ export const LogisticsManagement = () => {
                 {activeTab === "areas" && <div className="p-4"><ServiceAreaManagement /></div>}
                 {activeTab === "deliveryPoints" && <div className="p-4"><DeliveryPointsList onEdit={(item) => { setEditingItem(item); setIsModalOpen(true); }} /></div>}
                 {activeTab === "deliveryRoutes" && <div className="p-4"><DeliveryRoutesList onEdit={(item) => { setEditingItem(item); setIsModalOpen(true); }} /></div>}
+                {activeTab === "fleet" && <FleetManagement />}
             </div>
 
             {/* Modal */}
@@ -1591,6 +1594,192 @@ export const LogisticsManagement = () => {
                     item={editingItem}
                     onClose={() => setIsModalOpen(false)}
                 />
+            )}
+        </div>
+    );
+};
+
+// ========================
+// FLEET & TRIP MANAGEMENT
+// ========================
+const FleetManagement = () => {
+    const [view, setView] = useState("vehicles"); // "vehicles" or "trips"
+    const [isVehicleModalOpen, setIsVehicleModalOpen] = useState(false);
+    const [editingVehicle, setEditingVehicle] = useState(null);
+
+    return (
+        <div className="p-6 space-y-6">
+            <div className="flex justify-between items-center bg-gray-50 p-4 rounded-xl border border-gray-100">
+                <div className="flex gap-2">
+                    <button 
+                        className={`btn btn-sm ${view === "vehicles" ? "btn-primary shadow-lg" : "btn-ghost"}`}
+                        onClick={() => setView("vehicles")}
+                    >
+                        <Truck size={16} className="mr-2" /> Vehicles
+                    </button>
+                    <button 
+                        className={`btn btn-sm ${view === "trips" ? "btn-primary shadow-lg" : "btn-ghost"}`}
+                        onClick={() => setView("trips")}
+                    >
+                        <Route size={16} className="mr-2" /> Active Trips
+                    </button>
+                </div>
+                {view === "vehicles" && (
+                    <button className="btn btn-sm btn-primary" onClick={() => { setEditingVehicle(null); setIsVehicleModalOpen(true); }}>
+                        <Plus size={16} /> Add Vehicle
+                    </button>
+                )}
+            </div>
+
+            {view === "vehicles" ? <VehiclesList onEdit={(v) => { setEditingVehicle(v); setIsVehicleModalOpen(true); }} /> : <TripsList />}
+
+            {/* Vehicle Modal Simple Placeholder */}
+            {isVehicleModalOpen && (
+                <div className="modal modal-open">
+                    <div className="modal-box max-w-sm rounded-[2rem]">
+                        <h3 className="font-black text-xl text-gray-800 uppercase tracking-tight mb-2">
+                            {editingVehicle ? "Update Fleet" : "Add New Vehicle"}
+                        </h3>
+                        <p className="py-4 text-xs font-bold text-gray-500 uppercase tracking-widest leading-relaxed">
+                            Registration details for operational tracking.
+                        </p>
+                        <div className="space-y-4">
+                             <input type="text" placeholder="Plate Number (e.g. MH 12 AB 1234)" className="input input-bordered w-full font-black uppercase" />
+                             <input type="text" placeholder="Model (e.g. Tata 407)" className="input input-bordered w-full" />
+                        </div>
+                        <div className="modal-action">
+                            <button className="btn btn-ghost" onClick={() => setIsVehicleModalOpen(false)}>Cancel</button>
+                            <button className="btn btn-primary px-8" onClick={() => setIsVehicleModalOpen(false)}>Save Asset</button>
+                        </div>
+                    </div>
+                </div>
+            )}
+        </div>
+    );
+};
+
+const VehiclesList = ({ onEdit }) => {
+    const { data: vehiclesData, isLoading } = useQuery({ queryKey: ["vehicles"], queryFn: getVehicles });
+    
+    if (isLoading) return <div className="p-10 flex justify-center"><span className="loading loading-spinner text-primary"></span></div>;
+    
+    return (
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+            {(vehiclesData?.result || []).map(v => (
+                <div key={v._id} className="card bg-white border border-gray-100 shadow-sm hover:shadow-xl transition-all group overflow-hidden">
+                    <div className="card-body p-6">
+                        <div className="flex justify-between items-start">
+                            <div className="bg-indigo-50 p-4 rounded-2xl text-indigo-600 transition-transform group-hover:scale-110">
+                                <Truck size={28} />
+                            </div>
+                            <div className="badge badge-indigo badge-outline text-[10px] font-black tracking-widest uppercase py-3 px-4">{v.type || "Truck"}</div>
+                        </div>
+                        
+                        <div className="mt-6">
+                            <h3 className="text-2xl font-black text-gray-800 tracking-tighter uppercase">{v.plateNumber}</h3>
+                            <p className="text-xs text-gray-400 font-bold uppercase tracking-widest">{v.model}</p>
+                        </div>
+
+                        <div className="mt-8 grid grid-cols-2 gap-px bg-gray-100 rounded-2xl overflow-hidden border border-gray-100">
+                            <div className="bg-gray-50/50 p-4">
+                                <p className="text-[9px] text-gray-400 font-black uppercase tracking-widest mb-1">Status</p>
+                                <div className="flex items-center gap-1.5">
+                                    <div className="w-2 h-2 rounded-full bg-green-500 animate-pulse"></div>
+                                    <span className="text-xs font-black text-gray-700 uppercase">Active</span>
+                                </div>
+                            </div>
+                            <div className="bg-gray-50/50 p-4">
+                                <p className="text-[9px] text-gray-400 font-black uppercase tracking-widest mb-1">Fleet ID</p>
+                                <span className="text-xs font-black text-gray-700 uppercase">VH-{v._id.slice(-4)}</span>
+                            </div>
+                        </div>
+
+                        <div className="mt-6 flex justify-between items-center bg-indigo-600 p-4 rounded-2xl text-white shadow-lg shadow-indigo-100">
+                             <div>
+                                 <p className="text-[9px] font-bold opacity-70 uppercase mb-1">Odometer</p>
+                                 <p className="text-lg font-black">{v.currentKm?.toLocaleString() || 0} <span className="text-[10px] opacity-70">KM</span></p>
+                             </div>
+                             <div className="text-right">
+                                 <p className="text-[9px] font-bold opacity-70 uppercase mb-1">Capacity</p>
+                                 <p className="text-lg font-black">{v.capacityLiters || 0} <span className="text-[10px] opacity-70">L</span></p>
+                             </div>
+                        </div>
+                    </div>
+                </div>
+            ))}
+            {vehiclesData?.result?.length === 0 && (
+                <div className="col-span-full p-20 text-center border-2 border-dashed border-gray-100 rounded-[3rem] bg-gray-50/30">
+                    <Truck size={48} className="mx-auto mb-4 text-gray-200" />
+                    <p className="text-lg font-black text-gray-300 uppercase tracking-tight">No Vehicles Registered</p>
+                </div>
+            )}
+        </div>
+    );
+};
+
+const TripsList = () => {
+    const { data: tripsData, isLoading } = useQuery({ queryKey: ["trips"], queryFn: () => getTruckTrips({}) });
+    
+    if (isLoading) return <div className="p-10 flex justify-center"><span className="loading loading-spinner text-primary"></span></div>;
+
+    return (
+        <div className="grid grid-cols-1 gap-6">
+            {(tripsData?.result || []).map(t => (
+                <div key={t._id} className="bg-white rounded-[2rem] border border-gray-100 p-6 flex flex-wrap lg:flex-nowrap gap-8 items-center hover:shadow-2xl transition-all group">
+                    <div className="flex-shrink-0 w-24 h-24 bg-primary/10 rounded-[1.5rem] flex flex-col items-center justify-center text-primary border border-primary/10 shadow-inner">
+                        <span className="text-[10px] font-black uppercase opacity-60">Status</span>
+                        <div className={`mt-1 font-black uppercase text-[10px] px-2 py-0.5 rounded-full ${
+                             t.status === 'COMPLETED' ? 'bg-green-100 text-green-700' : 
+                             t.status === 'IN_TRANSIT' ? 'bg-blue-100 text-blue-700' : 'bg-gray-100 text-gray-700'
+                        }`}>
+                             {t.status}
+                        </div>
+                    </div>
+
+                    <div className="flex-grow space-y-2">
+                        <div className="flex items-center gap-3">
+                             <h4 className="text-xl font-black text-gray-800 tracking-tight">{t.tripId}</h4>
+                             <span className="text-[10px] font-bold text-gray-300">â€¢ {new Date(t.date).toLocaleDateString()}</span>
+                        </div>
+                        <div className="flex items-center gap-6">
+                            <div className="flex items-center gap-2">
+                                <Users size={14} className="text-gray-400" />
+                                <span className="text-sm font-bold text-gray-600">{t.driver?.name}</span>
+                            </div>
+                            <div className="flex items-center gap-2">
+                                <Truck size={14} className="text-gray-400" />
+                                <span className="text-sm font-black text-gray-800 uppercase">{t.vehicle?.plateNumber}</span>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div className="grid grid-cols-3 gap-12 pr-10 border-r border-gray-100">
+                        <div>
+                             <p className="text-[10px] text-gray-400 font-bold uppercase mb-1">Start Km</p>
+                             <p className="text-lg font-black text-gray-700">{t.startKm.toLocaleString()}</p>
+                        </div>
+                        <div>
+                             <p className="text-[10px] text-gray-400 font-bold uppercase mb-1">Distance</p>
+                             <p className="text-lg font-black text-primary">{t.distanceTravelled || 0} km</p>
+                        </div>
+                        <div>
+                             <p className="text-[10px] text-gray-400 font-bold uppercase mb-1">Items Confirmed</p>
+                             <span className={`text-lg font-black ${t.isConfirmed ? 'text-green-500' : 'text-gray-300'}`}>
+                                 {t.isConfirmed ? 'YES' : 'PENDING'}
+                             </span>
+                        </div>
+                    </div>
+
+                    <button className="btn btn-circle btn-lg btn-ghost group-hover:bg-primary group-hover:text-white transition-all">
+                         <Zap size={24} />
+                    </button>
+                </div>
+            ))}
+            {tripsData?.result?.length === 0 && (
+                <div className="p-20 text-center border-2 border-dashed border-gray-100 rounded-[3rem] bg-gray-50/30">
+                    <Route size={48} className="mx-auto mb-4 text-gray-200" />
+                    <p className="text-lg font-black text-gray-300 uppercase tracking-tight">No Trip Logs Found</p>
+                </div>
             )}
         </div>
     );

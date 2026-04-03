@@ -16,10 +16,12 @@ const {
     createDeliveryPoint, getDeliveryPoints, updateDeliveryPoint, deleteDeliveryPoint,
     // Delivery Route
     createDeliveryRoute, getDeliveryRoutes, updateDeliveryRoute, deleteDeliveryRoute,
-    // Hierarchy
     getHierarchy,
     // Truck Driver
     getTruckDrivers, updateTruckDriverHubs,
+    // Fleet & Trips
+    getVehicles, createVehicle, updateVehicle, deleteVehicle,
+    getTruckTrips, createTruckTrip, startTruckTrip, confirmPickup, endTruckTrip, getTripManifest
 } = require("../controllers/logisticsController");
 
 // Factory Routes
@@ -82,10 +84,31 @@ router.route("/delivery-routes/:id")
 router.route("/hierarchy")
     .get(protect, authorize("ADMIN", "SUPERADMIN"), getHierarchy);
 
-// Truck Driver Route Management
 router.route("/truck-drivers")
     .get(protect, authorize("ADMIN", "SUPERADMIN"), getTruckDrivers);
 router.route("/truck-drivers/:id/hubs")
     .put(protect, authorize("ADMIN", "SUPERADMIN"), updateTruckDriverHubs);
+
+// Fleet Management
+router.route("/vehicles")
+    .get(protect, authorize("ADMIN", "SUPERADMIN"), getVehicles)
+    .post(protect, authorize("ADMIN", "SUPERADMIN"), createVehicle);
+router.route("/vehicles/:id")
+    .put(protect, authorize("ADMIN", "SUPERADMIN"), updateVehicle)
+    .delete(protect, authorize("ADMIN", "SUPERADMIN"), deleteVehicle);
+
+// Truck Trip Operations
+router.route("/trips")
+    .get(protect, authorize("ADMIN", "SUPERADMIN", "TRUCK_DRIVER"), getTruckTrips)
+    .post(protect, authorize("ADMIN", "SUPERADMIN"), createTruckTrip);
+// IMPORTANT: /trips/manifest MUST come before /trips/:id/* to avoid Express matching "manifest" as an ID
+router.route("/trips/manifest")
+    .get(protect, authorize("ADMIN", "SUPERADMIN", "TRUCK_DRIVER"), getTripManifest);
+router.route("/trips/:id/start")
+    .put(protect, authorize("ADMIN", "SUPERADMIN", "TRUCK_DRIVER"), startTruckTrip);
+router.route("/trips/:id/confirm-pickup")
+    .put(protect, authorize("ADMIN", "SUPERADMIN", "TRUCK_DRIVER"), confirmPickup);
+router.route("/trips/:id/end")
+    .put(protect, authorize("ADMIN", "SUPERADMIN", "TRUCK_DRIVER"), endTruckTrip);
 
 module.exports = router;

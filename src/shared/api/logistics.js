@@ -256,3 +256,47 @@ export const updateTruckDriverHubs = async (id, hubs) => {
     const res = await axiosInstance.put(`/api/logistics/truck-drivers/${id}/hubs`, { hubs });
     return res.data;
 };
+
+// Fleet API
+export const getVehicles = async () => {
+    const res = await axiosInstance.get("/api/logistics/vehicles");
+    return res.data;
+};
+export const createVehicle = async (data) => {
+    const res = await axiosInstance.post("/api/logistics/vehicles", data);
+    return res.data;
+};
+export const updateVehicle = async (id, data) => {
+    const res = await axiosInstance.put(`/api/logistics/vehicles/${id}`, data);
+    return res.data;
+};
+export const deleteVehicle = async (id) => {
+    const res = await axiosInstance.delete(`/api/logistics/vehicles/${id}`);
+    return res.data;
+};
+
+// Truck Trip API
+export const getTruckTrips = async (params = {}) => {
+    const res = await axiosInstance.get("/api/logistics/trips", { params });
+    return res.data;
+};
+export const createTruckTrip = async (data) => {
+    const res = await axiosInstance.post("/api/logistics/trips", data);
+    return res.data;
+};
+export const startTruckTrip = async (id, startKm) => {
+    const res = await axiosInstance.put(`/api/logistics/trips/${id}/start`, { startKm });
+    return res.data;
+};
+export const confirmPickup = async (id, manifest) => {
+    const res = await axiosInstance.put(`/api/logistics/trips/${id}/confirm-pickup`, { manifest });
+    return res.data;
+};
+export const endTruckTrip = async (id, endKm) => {
+    const res = await axiosInstance.put(`/api/logistics/trips/${id}/end`, { endKm });
+    return res.data;
+};
+export const getTripManifest = async (params) => {
+    const res = await axiosInstance.get("/api/logistics/trips/manifest", { params });
+    return res.data;
+};

@@ -6,6 +6,10 @@ const Hub = require("../models/Hub");
 const DeliveryPoint = require("../models/DeliveryPoint");
 const DeliveryRoute = require("../models/DeliveryRoute");
 const Employee = require("../models/Employee");
+const Vehicle = require("../models/Vehicle");
+const TruckTrip = require("../models/TruckTrip");
+const User = require("../models/User");
+const inventoryController = require("./inventoryController");
 
 // ========================
 // FACTORY Controllers
@@ -376,6 +380,7 @@ exports.getHierarchy = async (req, res) => {
     }
 };
 
+
 // ========================
 // TRUCK DRIVER Hub Mapping
 // ========================
@@ -392,7 +397,7 @@ exports.getTruckDrivers = async (req, res) => {
 
 exports.updateTruckDriverHubs = async (req, res) => {
     try {
-        const { hubs } = req.body; // Array of Hub IDs
+        const { hubs } = req.body; 
         const driver = await Employee.findByIdAndUpdate(
             req.params.id, 
             { hubs }, 
@@ -400,6 +405,157 @@ exports.updateTruckDriverHubs = async (req, res) => {
         ).populate("hubs", "name code");
         
         res.status(200).json({ success: true, result: driver });
+    } catch (error) {
+        res.status(500).json({ success: false, message: error.message });
+    }
+};
+
+// ====================
+// FLEET MANAGEMENT (VEHICLES)
+// ====================
+exports.getVehicles = async (req, res) => {
+    try {
+        const vehicles = await Vehicle.find().sort({ plateNumber: 1 });
+        res.status(200).json({ success: true, result: vehicles });
+    } catch (error) {
+        res.status(500).json({ success: false, message: error.message });
+    }
+};
+
+exports.createVehicle = async (req, res) => {
+    try {
+        const vehicle = await Vehicle.create(req.body);
+        res.status(201).json({ success: true, result: vehicle });
+    } catch (error) {
+        res.status(500).json({ success: false, message: error.message });
+    }
+};
+
+exports.updateVehicle = async (req, res) => {
+    try {
+        const vehicle = await Vehicle.findByIdAndUpdate(req.params.id, req.body, { new: true });
+        res.status(200).json({ success: true, result: vehicle });
+    } catch (error) {
+        res.status(500).json({ success: false, message: error.message });
+    }
+};
+
+exports.deleteVehicle = async (req, res) => {
+    try {
+        await Vehicle.findByIdAndDelete(req.params.id);
+        res.status(200).json({ success: true, message: "Vehicle deleted" });
+    } catch (error) {
+        res.status(500).json({ success: false, message: error.message });
+    }
+};
+
+// ====================
+// TRUCK TRIP OPERATIONS
+// ====================
+exports.getTruckTrips = async (req, res) => {
+    try {
+        const { date, driverId } = req.query;
+        const filter = {};
+        if (date) {
+            const d = new Date(date);
+            filter.date = { $gte: d, $lt: new Date(d.getTime() + 86400000) };
+        }
+        if (driverId) filter.driver = driverId;
+
+        const trips = await TruckTrip.find(filter)
+            .populate("driver", "name mobile")
+            .populate("vehicle", "plateNumber model")
+            .sort({ date: -1, createdAt: -1 });
+
+        res.status(200).json({ success: true, result: trips });
+    } catch (error) {
+        res.status(500).json({ success: false, message: error.message });
+    }
+};
+
+exports.createTruckTrip = async (req, res) => {
+    try {
+        const trip = await TruckTrip.create(req.body);
+        res.status(201).json({ success: true, result: trip });
+    } catch (error) {
+        res.status(500).json({ success: false, message: error.message });
+    }
+};
+
+exports.startTruckTrip = async (req, res) => {
+    try {
+        const { startKm } = req.body;
+        const trip = await TruckTrip.findByIdAndUpdate(
+            req.params.id, 
+            { 
+                startKm, 
+                status: "LOADING", 
+                startTime: new Date() 
+            }, 
+            { new: true }
+        );
+        res.status(200).json({ success: true, result: trip });
+    } catch (error) {
+        res.status(500).json({ success: false, message: error.message });
+    }
+};
+
+exports.confirmPickup = async (req, res) => {
+    try {
+        const { manifest } = req.body; // Array of { product, confirmedUnits }
+        const trip = await TruckTrip.findByIdAndUpdate(
+            req.params.id,
+            {
+                manifest,
+                isConfirmed: true,
+                confirmedAt: new Date(),
+                status: "IN_TRANSIT"
+            },
+            { new: true }
+        );
+        res.status(200).json({ success: true, result: trip });
+    } catch (error) {
+        res.status(500).json({ success: false, message: error.message });
+    }
+};
+
+exports.endTruckTrip = async (req, res) => {
+    try {
+        const { endKm } = req.body;
+        const trip = await TruckTrip.findById(req.params.id);
+        
+        trip.endKm = endKm;
+        trip.status = "COMPLETED";
+        trip.endTime = new Date();
+        await trip.save(); // pre-save will calc distance
+
+        // Update vehicle KM too
+        if (trip.vehicle) {
+            await Vehicle.findByIdAndUpdate(trip.vehicle, { currentKm: endKm });
+        }
+
+        res.status(200).json({ success: true, result: trip });
+    } catch (error) {
+        res.status(500).json({ success: false, message: error.message });
+    }
+};
+
+exports.getTripManifest = async (req, res) => {
+    try {
+        const { date, driverId } = req.query;
+        // Fetch the 4-tier forecast for the requested date
+        const forecast = await inventoryController.getLogisticsForecastInternal(date);
+        
+        // Find the specific driver's truck in the hierarchy
+        let truckNode = null;
+        if (forecast.hierarchy && forecast.hierarchy.trucks) {
+            truckNode = forecast.hierarchy.trucks[driverId];
+        }
+
+        res.status(200).json({ 
+            success: true, 
+            result: truckNode || { name: "Not Assigned", hubs: {}, products: {} } 
+        });
     } catch (error) {
         res.status(500).json({ success: false, message: error.message });
     }

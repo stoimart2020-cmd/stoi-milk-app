@@ -51,32 +51,29 @@ const getDailyDemand = async (date) => {
     return totalLitersDemand;
 };
 
-// --- Advanced: Logistics Forecast 4-Tier Breakdown (Rider -> Hub -> Truck -> Factory) ---
-exports.getLogisticsForecast = async (req, res) => {
-    try {
-        const dateStr = req.query.date || new Date(Date.now() + 86400000).toISOString().split('T')[0]; // Default: Tomorrow
-        const targetDate = new Date(dateStr);
-        targetDate.setHours(0, 0, 0, 0);
-        const dayName = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"][targetDate.getDay()];
+// --- Advanced: Logistics Forecast 4-Tier Breakdown (Internal Logic) ---
+exports.getLogisticsForecastInternal = async (dateStr) => {
+    const targetDate = new Date(dateStr);
+    targetDate.setHours(0, 0, 0, 0);
+    const dayName = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"][targetDate.getDay()];
 
-        const Employee = require("../models/Employee");
-        const truckDrivers = await Employee.find({ role: "TRUCK_DRIVER", isActive: true });
-        
-        // Map Hubs to Truck Drivers
-        const hubToDriverMap = {}; // hubId -> { _id, name }
-        truckDrivers.forEach(d => {
-            if (d.hubs && d.hubs.length > 0) {
-                d.hubs.forEach(h => {
-                    hubToDriverMap[h.toString()] = { _id: d._id.toString(), name: d.name };
-                });
-            }
-        });
+    const truckDrivers = await Employee.find({ role: "TRUCK_DRIVER", isActive: true });
+    
+    // Map Hubs to Truck Drivers
+    const hubToDriverMap = {}; // hubId -> { _id, name }
+    truckDrivers.forEach(d => {
+        if (d.hubs && d.hubs.length > 0) {
+            d.hubs.forEach(h => {
+                hubToDriverMap[h.toString()] = { _id: d._id.toString(), name: d.name };
+            });
+        }
+    });
 
-        const forecastData = {
-            totalLiters: 0,
-            trucks: {}, // truckId -> { name, hubs: {}, products: {} }
-            factoryProducts: {} // Factor total aggregates
-        };
+    const forecastData = {
+        totalLiters: 0,
+        trucks: {}, // truckId -> { name, hubs: {}, products: {} }
+        factoryProducts: {} // Factory total aggregates
+    };
         
         const getStructures = (hubId, hubName, riderId, riderName) => {
             const driver = hubToDriverMap[hubId] || { _id: 'unassigned_truck', name: 'Unassigned Truck' };
@@ -220,16 +217,21 @@ exports.getLogisticsForecast = async (req, res) => {
             }
         }
 
-        res.status(200).json({
-            success: true,
-            date: dateStr,
-            totalLiters: forecastData.totalLiters.toFixed(2),
-            hierarchy: {
-                trucks: forecastData.trucks,
-                factoryProducts: forecastData.factoryProducts
-            }
-        });
 
+    return {
+        totalLiters: forecastData.totalLiters.toFixed(2),
+        hierarchy: {
+            trucks: forecastData.trucks,
+            factoryProducts: forecastData.factoryProducts
+        }
+    };
+};
+
+exports.getLogisticsForecast = async (req, res) => {
+    try {
+        const dateStr = req.query.date || new Date(Date.now() + 86400000).toISOString().split('T')[0];
+        const result = await exports.getLogisticsForecastInternal(dateStr);
+        res.status(200).json({ success: true, date: dateStr, ...result });
     } catch (error) {
         console.error("Logistics Forecast Error:", error);
         res.status(500).json({ success: false, message: error.message });

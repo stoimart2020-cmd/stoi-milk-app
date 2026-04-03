@@ -55,10 +55,11 @@ import { StockAnalytics } from "./features/inventory/StockAnalytics";
 import { MilkCollectionSummary } from "./features/inventory/MilkCollectionSummary";
 import { BrokenBottles } from "./features/inventory/BrokenBottles";
 
-import ErrorBoundary from "./components/ErrorBoundary";
 import { CompleteProfile } from "./features/auth/CompleteProfile";
 import BackupRestore from "./features/settings/BackupRestore";
 import AttendanceManagement from "./features/staff/AttendanceManagement";
+import TruckDashboard from "./features/delivery/TruckDashboard";
+import ErrorBoundary from "./components/ErrorBoundary";
 
 // Helper to check profile completeness
 const isProfileComplete = (user) => {
@@ -173,6 +174,7 @@ function AppRoute() {
       path: "/administrator/login",
       element: currentAdmin?.user?.role ? (
         currentAdmin.user.role === 'RIDER' ? <Navigate to="/rider/dashboard" /> :
+        currentAdmin.user.role === 'TRUCK_DRIVER' ? <Navigate to="/truck/dashboard" /> :
         ['FIELD_MARKETING', 'FIELD_OFFICER'].includes(currentAdmin.user.role) ? <Navigate to="/fieldsales/dashboard" /> :
         <Navigate to="/administrator/dashboard" />
       ) : (
@@ -181,12 +183,13 @@ function AppRoute() {
     },
     {
       path: "/administrator/dashboard",
-      element: currentAdmin?.user?.role && !['RIDER', 'FIELD_MARKETING', 'FIELD_OFFICER'].includes(currentAdmin.user.role) ? (
+      element: currentAdmin?.user?.role && !['RIDER', 'TRUCK_DRIVER', 'FIELD_MARKETING', 'FIELD_OFFICER'].includes(currentAdmin.user.role) ? (
         <ErrorBoundary>
           <AdministratorDashboard />
         </ErrorBoundary>
       ) : (
         currentAdmin?.user?.role === 'RIDER' ? <Navigate to="/rider/dashboard" /> :
+        currentAdmin?.user?.role === 'TRUCK_DRIVER' ? <Navigate to="/truck/dashboard" /> :
         ['FIELD_MARKETING', 'FIELD_OFFICER'].includes(currentAdmin?.user?.role) ? <Navigate to="/fieldsales/dashboard" /> :
         <Navigate to="/administrator/login" />
       ),
@@ -390,6 +393,14 @@ function AppRoute() {
         <FieldSalesDashboard />
       ) : (
         <Navigate to="/fieldsales/login" />
+      ),
+    },
+    {
+      path: "/truck/dashboard",
+      element: ['TRUCK_DRIVER', 'ADMIN', 'SUPERADMIN'].includes(currentAdmin?.user?.role) ? (
+        <TruckDashboard />
+      ) : (
+        <Navigate to="/administrator/login" />
       ),
     },
     {
