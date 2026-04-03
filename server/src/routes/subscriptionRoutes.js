@@ -1,6 +1,7 @@
 const express = require("express");
 const router = express.Router();
 const { protect } = require("../middleware/auth");
+const { attachScope } = require("../middleware/scope");
 const {
     createSubscription,
     getSubscriptions,
@@ -28,7 +29,7 @@ router.put("/:id/cancel", protect, cancelSubscription);
 
 // Admin Routes - Using different path to avoid parameter conflicts
 console.log('🔧 Registering subscription routes...');
-router.get("/admin-all", protect, getAllSubscriptions);
+router.get("/admin-all", protect, attachScope, getAllSubscriptions);
 console.log('✅ Route registered: GET /api/subscriptions/admin-all');
 router.get("/admin/calendar/:userId", protect, getAdminCalendarData);
 router.put("/admin/modification", protect, updateAdminDailyModification);

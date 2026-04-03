@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { getAllRiders } from "../../shared/api/riders";
+import { getAllRiders, getUnassignedCustomers } from "../../shared/api/riders";
 import { AddRiderModal } from "./AddRiderModal";
 import {
     Plus,
@@ -14,7 +14,9 @@ import {
     Warehouse,
     Share2,
     Copy,
-    ExternalLink
+    ExternalLink,
+    UserX,
+    AlertTriangle
 } from "lucide-react";
 import { toast } from "react-hot-toast";
 import { format } from "date-fns";
@@ -29,6 +31,13 @@ export const Riders = () => {
         queryKey: ["riders"],
         queryFn: getAllRiders
     });
+
+    const { data: unassignedData } = useQuery({
+        queryKey: ["unassigned-customers-count"],
+        queryFn: getUnassignedCustomers,
+        staleTime: 60_000
+    });
+    const unassignedCount = unassignedData?.total || 0;
 
     const riders = data?.result || [];
 
@@ -113,6 +122,58 @@ export const Riders = () => {
                             </tr>
                         </thead>
                         <tbody className="divide-y divide-gray-100">
+                            {/* ---- UNASSIGNED VIRTUAL ROW ---- */}
+                            <tr
+                                onClick={() => navigate("/administrator/dashboard/riders/unassigned")}
+                                className="hover:bg-amber-50/60 transition-colors cursor-pointer group bg-amber-50/30 border-b-2 border-amber-100"
+                            >
+                                <td className="px-6 py-4">
+                                    <div className="flex items-center gap-3">
+                                        <div className="w-10 h-10 rounded-full bg-amber-100 text-amber-600 flex items-center justify-center">
+                                            <UserX size={20} />
+                                        </div>
+                                        <div>
+                                            <div className="flex items-center gap-2">
+                                                <span className="font-semibold text-gray-800">Unassigned</span>
+                                                <span className="text-[10px] font-bold px-1.5 py-0.5 rounded-full bg-amber-100 text-amber-700">
+                                                    Virtual
+                                                </span>
+                                            </div>
+                                            <p className="text-xs text-gray-500">Customers with no delivery rider</p>
+                                        </div>
+                                    </div>
+                                </td>
+                                <td className="px-6 py-4">
+                                    <span className="text-xs text-gray-400 italic">—</span>
+                                </td>
+                                <td className="px-6 py-4">
+                                    <span className="text-xs text-gray-400 italic">No area / hub</span>
+                                </td>
+                                <td className="px-6 py-4">
+                                    <span className="text-xs text-gray-400 italic">—</span>
+                                </td>
+                                <td className="px-6 py-4">
+                                    {unassignedCount > 0 ? (
+                                        <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-xs font-semibold bg-amber-100 text-amber-700 border border-amber-200">
+                                            <AlertTriangle size={11} />
+                                            {unassignedCount} customer{unassignedCount !== 1 ? "s" : ""}
+                                        </span>
+                                    ) : (
+                                        <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-green-50 text-green-700 border border-green-100">
+                                            All assigned
+                                        </span>
+                                    )}
+                                </td>
+                                <td className="px-6 py-4">
+                                    <span className="text-xs text-gray-400 italic">—</span>
+                                </td>
+                                <td className="px-6 py-4 text-right">
+                                    <span className="opacity-0 group-hover:opacity-100 flex items-center justify-end gap-1.5 text-xs font-semibold text-amber-700 transition-opacity">
+                                        <ExternalLink size={14} /> View Customers
+                                    </span>
+                                </td>
+                            </tr>
+                            {/* ---- ACTUAL RIDER ROWS ---- */}
                             {isLoading ? (
                                 <tr>
                                     <td colSpan="7" className="px-6 py-8 text-center text-gray-500">

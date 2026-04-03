@@ -32,6 +32,16 @@ const roleSchema = new mongoose.Schema({
         inventory: { type: permissionSchema, default: {} }, // Vendors, Milk Collection, Stock Analytics
         attendance: { type: permissionSchema, default: {} }, // Attendance & Salary Management
         settings: { type: permissionSchema, default: {} },
+        
+        // Newly added modules
+        riders: { type: permissionSchema, default: {} },
+        staff: { type: permissionSchema, default: {} },
+        distributors: { type: permissionSchema, default: {} },
+        deliveries: { type: permissionSchema, default: {} },
+        live_tracking: { type: permissionSchema, default: {} },
+        bottle_management: { type: permissionSchema, default: {} },
+        leads: { type: permissionSchema, default: {} },
+        complaints: { type: permissionSchema, default: {} },
     }
 }, { timestamps: true });
 

@@ -37,6 +37,7 @@ import { AddPayment } from "./features/payments/AddPayment";
 import { PaymentTransactions } from "./features/payments/PaymentTransactions";
 import { Orders } from "./features/orders/Orders";
 import { Riders } from "./features/riders/Riders";
+import { UnassignedCustomers } from "./features/riders/UnassignedCustomers";
 import { DeliveryDashboard } from "./features/delivery/DeliveryDashboard";
 import { LiveTracking } from "./features/delivery/LiveTracking";
 import Reports from "./features/reports/Reports";
@@ -295,6 +296,10 @@ function AppRoute() {
         {
           path: "riders",
           element: <Riders />,
+        },
+        {
+          path: "riders/unassigned",
+          element: <UnassignedCustomers />,
         },
         {
           path: "attendance",

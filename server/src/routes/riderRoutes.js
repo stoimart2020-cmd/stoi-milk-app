@@ -1,9 +1,11 @@
 const express = require("express");
 const router = express.Router();
 const { protect, checkPermission } = require("../middleware/auth");
+const { attachScope } = require("../middleware/scope");
 const {
     updateShiftStatus,
     getRiderCustomers,
+    getUnassignedCustomers,
     markAttendance,
     getAttendance,
     uploadDocument,
@@ -36,6 +38,7 @@ router.post("/my/km-log", protect, (req, res) => {
 });
 
 // --- Admin Managed (Staff Access Required) ---
+router.get("/unassigned/customers", protect, checkPermission('riders', 'view'), getUnassignedCustomers);
 router.get("/:id/customers", protect, checkPermission('riders', 'view'), getRiderCustomers);
 
 // Attendance & Salary

@@ -677,16 +677,21 @@ exports.getAllSubscriptions = async (req, res) => {
         // Logistical Filters (handled by resolving hubs first)
         const hubIds = await resolveHubs({ factory, district, city, area, hub });
 
-        if (hubIds || stockPoint) {
-            const customerQuery = { role: "CUSTOMER" };
-            if (hubIds) customerQuery.hub = { $in: hubIds };
-            if (stockPoint) customerQuery.deliveryPoints = stockPoint;
+        let customerQuery = { role: "CUSTOMER" };
+        if (hubIds) customerQuery.hub = { $in: hubIds };
+        if (stockPoint) customerQuery.deliveryPoints = stockPoint;
 
+        if (req.scope) {
+            const { scopeCustomerFilter } = require("../middleware/scope");
+            customerQuery = scopeCustomerFilter(req.scope, customerQuery);
+        }
+
+        if (hubIds || stockPoint || (req.scope && !req.scope.fullAccess)) {
             const matchingCustomers = await User.find(customerQuery).select("_id");
             const customerIds = matchingCustomers.map(c => c._id);
             query.user = { $in: customerIds };
         }
-        // If type is 'all' or undefined, query remains empty (fetch all)
+        // If type is 'all' or undefined, query remains empty (fetch all) unless scoped
 
         console.log('getAllSubscriptions query:', JSON.stringify(query), 'type:', type);
 

@@ -120,3 +120,8 @@ export const getRiderTempOtp = async (id) => {
     const { data } = await axiosInstance.get(`/api/riders/${id}/temp-otp`);
     return data;
 };
+
+export const getUnassignedCustomers = async () => {
+    const { data } = await axiosInstance.get("/api/riders/unassigned/customers");
+    return data;
+};

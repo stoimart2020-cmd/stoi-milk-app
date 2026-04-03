@@ -1,7 +1,9 @@
 const User = require("../models/User");
 const Employee = require("../models/Employee");
 const Order = require("../models/Order");
+const Subscription = require("../models/Subscription");
 const { createNotification } = require("./notificationController");
+const { scopeCustomerFilter } = require("../middleware/scope");
 const path = require("path");
 const fs = require("fs");
 
@@ -85,6 +87,56 @@ exports.getRiderCustomers = async (req, res) => {
         }
 
         res.status(200).json({ success: true, result: customers });
+    } catch (error) {
+        res.status(500).json({ success: false, message: error.message });
+    }
+};
+
+// ========================
+// UNASSIGNED CUSTOMERS
+// ========================
+exports.getUnassignedCustomers = async (req, res) => {
+    try {
+        // Find subscriptions that are active/paused and have no assignedRider
+        const unassignedSubs = await Subscription.find({
+            status: { $in: ["active", "paused"] },
+            $or: [
+                { assignedRider: null },
+                { assignedRider: { $exists: false } }
+            ]
+        }).select("user product quantity frequency").populate("product", "name image price").lean();
+
+        // Get unique user IDs
+        const userIdSet = new Set(unassignedSubs.map(s => s.user?.toString()).filter(Boolean));
+        const userIds = [...userIdSet];
+
+        // Fetch customer details, applying row-level security
+        let customerQuery = {
+            _id: { $in: userIds },
+            role: "CUSTOMER"
+        };
+        customerQuery = scopeCustomerFilter(req.scope, customerQuery);
+
+        const customers = await User.find(customerQuery)
+            .select("name mobile address walletBalance serviceArea customerId deliveryBoy")
+            .populate("serviceArea", "name")
+            .lean();
+
+        // Attach subscription info to each customer
+        const customerMap = {};
+        for (const sub of unassignedSubs) {
+            const uid = sub.user?.toString();
+            if (!uid) continue;
+            if (!customerMap[uid]) customerMap[uid] = [];
+            customerMap[uid].push(sub);
+        }
+
+        const result = customers.map(c => ({
+            ...c,
+            subscriptions: customerMap[c._id.toString()] || []
+        }));
+
+        res.status(200).json({ success: true, result, total: result.length });
     } catch (error) {
         res.status(500).json({ success: false, message: error.message });
     }
