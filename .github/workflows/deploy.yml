@@ -22,7 +22,8 @@ jobs:
           port: 22
           script: |
             cd /var/www/stoi-milk-app
-            git pull
+            git reset --hard HEAD
+            git pull origin main
             npm install
             npm run build
             cd server && npm install && cd ..
