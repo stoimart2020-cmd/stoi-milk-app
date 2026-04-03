@@ -8,7 +8,8 @@ import {
     getHubs, createHub, updateHub, deleteHub,
     getDeliveryPoints, createDeliveryPoint, updateDeliveryPoint, deleteDeliveryPoint,
     getDeliveryRoutes, createDeliveryRoute, updateDeliveryRoute, deleteDeliveryRoute,
-    getLogisticsForecast, getDailyStockStatus, addProductionLog
+    getLogisticsForecast, getDailyStockStatus, addProductionLog,
+    getTruckDrivers, updateTruckDriverHubs
 } from "../../shared/api/logistics";
 import { getDeliveryOrders } from "../../shared/api/delivery";
 import { getAllProducts } from "../../shared/api/products";
@@ -23,6 +24,7 @@ const TABS = [
     { key: "production-log", label: "Production Log", icon: ClipboardCheck, singular: "Log" },
     { key: "reconciliation", label: "Inventory Reconciliation", icon: Scale, singular: "Reconciliation" },
     { key: "loading-sheets", label: "Rider Loading Sheets", icon: ClipboardList, singular: "Loading Sheet" },
+    { key: "truck-routes", label: "Truck Routes", icon: Truck, singular: "Truck Route" },
     { key: "factories", label: "Factories", icon: Building, singular: "Factory" },
     { key: "districts", label: "Districts", icon: MapIcon, singular: "District" },
     { key: "cities", label: "Cities", icon: Globe, singular: "City" },
@@ -84,6 +86,7 @@ export const LogisticsManagement = () => {
                 {activeTab === "production-log" && <ProductionLog />}
                 {activeTab === "reconciliation" && <InventoryReconciliation />}
                 {activeTab === "loading-sheets" && <RiderLoadingSheets />}
+                {activeTab === "truck-routes" && <TruckRouteManagement />}
                 {activeTab === "factories" && <div className="p-4"><FactoriesList onEdit={(item) => { setEditingItem(item); setIsModalOpen(true); }} /></div>}
                 {activeTab === "districts" && <div className="p-4"><DistrictsList onEdit={(item) => { setEditingItem(item); setIsModalOpen(true); }} /></div>}
                 {activeTab === "cities" && <div className="p-4"><CitiesList onEdit={(item) => { setEditingItem(item); setIsModalOpen(true); }} /></div>}
@@ -487,7 +490,7 @@ const DemandForecast = () => {
 
     const { data: forecast, isLoading, isError, refetch } = useQuery({
         queryKey: ["logistics-forecast", selectedDate],
-        queryFn: () => getLogisticsForecast(selectedDate),
+        queryFn: () => getLogisticsForecast({ date: selectedDate }),
     });
 
     const handlePrint = () => window.print();
@@ -506,8 +509,8 @@ const DemandForecast = () => {
     const hierarchy = forecast?.hierarchy || {};
     const factoryProducts = hierarchy.factoryProducts || {};
     const trucks = hierarchy.trucks || {};
-    const truckIds = Object.keys(trucks);
-    const factoryProductIds = Object.keys(factoryProducts);
+    const truckIds = trucks ? Object.keys(trucks) : [];
+    const factoryProductIds = factoryProducts ? Object.keys(factoryProducts) : [];
     const activeTrucks = truckIds.length;
     const totalHubs = truckIds.reduce((sum, tid) => sum + Object.keys(trucks[tid]?.hubs || {}).length, 0);
 
@@ -527,6 +530,9 @@ const DemandForecast = () => {
                 <div className="flex gap-2">
                     <button className="btn btn-outline gap-2" onClick={handlePrint}>
                         <Printer size={18} /> Print Packing List
+                    </button>
+                    <button className="btn btn-primary gap-2" onClick={handlePrint}>
+                        <ClipboardList size={18} /> Print Factory Manifest
                     </button>
                     <button className="btn btn-ghost btn-sm" onClick={() => refetch()}>Refresh</button>
                 </div>
@@ -715,6 +721,96 @@ const DemandForecast = () => {
                     .bg-primary, .bg-indigo-50, .bg-teal-50 { background: #f5f5f5 !important; -webkit-print-color-adjust: exact; }
                 }
             `}} />
+
+            {/* Print-Only Manifest */}
+            <div className="hidden print:block">
+                <DispatchManifest forecast={forecast} selectedDate={selectedDate} />
+            </div>
+        </div>
+    );
+};
+
+// ========================
+// DISPATCH MANIFEST (PRINT ONLY)
+// ========================
+const DispatchManifest = ({ forecast, selectedDate }) => {
+    const hierarchy = forecast?.hierarchy || {};
+    const trucks = hierarchy.trucks || {};
+    const truckIds = Object.keys(trucks);
+
+    if (truckIds.length === 0) return null;
+
+    return (
+        <div className="p-8 bg-white text-black min-h-screen">
+            <div className="flex justify-between items-start border-b-4 border-black pb-6 mb-8">
+                <div>
+                    <h1 className="text-4xl font-black uppercase tracking-tighter">Factory Dispatch Manifest</h1>
+                    <p className="text-xl font-bold mt-1">Date: {new Date(selectedDate).toLocaleDateString('en-IN', { day: '2-digit', month: 'long', year: 'numeric' })}</p>
+                </div>
+                <div className="text-right">
+                    <div className="bg-black text-white px-4 py-2 font-black text-2xl uppercase">STOI MILK PLANT</div>
+                    <p className="text-sm font-bold mt-2">Logistics Control Tower • Tier 1</p>
+                </div>
+            </div>
+
+            {truckIds.sort().map(tid => {
+                const truck = trucks[tid];
+                const hubs = Object.values(truck.hubs || {});
+                const products = Object.values(truck.products || {});
+                
+                return (
+                    <div key={tid} className="mb-12 break-inside-avoid">
+                        <div className="bg-gray-100 p-4 border-2 border-black flex justify-between items-center mb-4">
+                            <div>
+                                <h2 className="text-2xl font-black uppercase">🚚 TRUCK: {truck.name}</h2>
+                                <p className="font-bold text-gray-600">Assigned Hubs: {hubs.map(h => h.name).join(', ')}</p>
+                            </div>
+                            <div className="text-right">
+                                <p className="text-xs font-black uppercase">Total Load</p>
+                                <p className="text-3xl font-black">{products.reduce((s, p) => s + p.units, 0)} Units</p>
+                            </div>
+                        </div>
+
+                        <table className="w-full border-collapse border-2 border-black">
+                            <thead>
+                                <tr className="bg-gray-50 uppercase text-xs font-black">
+                                    <th className="border-2 border-black p-2 text-left">Product</th>
+                                    <th className="border-2 border-black p-2 text-center">Total Units</th>
+                                    <th className="border-2 border-black p-2 text-center">Crates</th>
+                                    <th className="border-2 border-black p-2 text-center">Loose Units</th>
+                                    <th className="border-2 border-black p-2 w-32">Loaded [✓]</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {products.map(p => {
+                                    const upc = p.unitsPerCrate || 12;
+                                    const crates = Math.floor(p.units / upc);
+                                    const loose = p.units % upc;
+                                    return (
+                                        <tr key={p.name} className="border-b border-black">
+                                            <td className="border-2 border-black p-3 font-bold text-lg">{p.name}</td>
+                                            <td className="border-2 border-black p-3 text-center text-2xl font-black">{p.units}</td>
+                                            <td className="border-2 border-black p-3 text-center text-xl font-bold bg-gray-50">{crates}</td>
+                                            <td className="border-2 border-black p-3 text-center text-xl font-bold">{loose}</td>
+                                            <td className="border-2 border-black p-3"></td>
+                                        </tr>
+                                    );
+                                })}
+                            </tbody>
+                        </table>
+                        
+                        <div className="mt-4 flex justify-between text-xs font-bold uppercase text-gray-500">
+                            <p>Driver Signature: _______________________</p>
+                            <p>Loader ID: _______________________</p>
+                            <p>Dispatch Time: _______________________</p>
+                        </div>
+                    </div>
+                );
+            })}
+
+            <div className="mt-20 pt-10 border-t border-dashed border-gray-300 text-center text-xs text-gray-400 uppercase font-bold">
+                End of Dispatch Manifest for {selectedDate} • System Generated by Stoi Milk App
+            </div>
         </div>
     );
 };
@@ -1327,6 +1423,167 @@ const InventoryReconciliation = () => {
                                     </div>
                                 </div>
                             </div>
+                        </div>
+                    </div>
+                </div>
+            )}
+        </div>
+    );
+};
+
+// ========================
+// TRUCK ROUTE MANAGEMENT
+// ========================
+const TruckRouteManagement = () => {
+    const [selectedDriver, setSelectedDriver] = useState(null);
+    const [isManageHubsOpen, setIsManageHubsOpen] = useState(false);
+
+    // Queries
+    const { data: driversData, isLoading: driversLoading, refetch: refetchDrivers } = useQuery({ 
+        queryKey: ["truck-drivers"], queryFn: getTruckDrivers 
+    });
+    const { data: hubsData, isLoading: hubsLoading } = useQuery({ 
+        queryKey: ["hubs"], queryFn: getHubs 
+    });
+
+    const updateHubsMutation = useMutation({
+        mutationFn: ({ id, hubs }) => updateTruckDriverHubs(id, hubs),
+        onSuccess: () => {
+            toast.success("Hub assignments updated");
+            refetchDrivers();
+            setIsManageHubsOpen(false);
+        },
+        onError: (err) => toast.error(err.message)
+    });
+
+    if (driversLoading) return <div className="p-10 flex justify-center"><span className="loading loading-spinner loading-lg text-primary"></span></div>;
+
+    const drivers = driversData?.result || [];
+    const allHubs = hubsData?.result || [];
+
+    return (
+        <div className="p-6 space-y-6">
+            <div className="flex justify-between items-center bg-base-200 p-4 rounded-xl">
+                <div className="flex items-center gap-3">
+                    <div className="bg-indigo-100 p-3 rounded-lg text-indigo-600">
+                        <Truck size={24} />
+                    </div>
+                    <div>
+                        <h2 className="text-xl font-black text-gray-800 uppercase tracking-tight">Truck Route Mapping</h2>
+                        <p className="text-xs font-bold text-gray-500 uppercase">Map Hubs to Truck Drivers</p>
+                    </div>
+                </div>
+            </div>
+
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+                {drivers.map(driver => (
+                    <div key={driver._id} className="card bg-white border border-base-300 shadow-sm hover:shadow-md transition-shadow">
+                        <div className="card-body p-5">
+                            <div className="flex justify-between items-start mb-4">
+                                <div className="flex items-center gap-3">
+                                    <div className="avatar placeholder">
+                                        <div className="bg-neutral text-neutral-content rounded-full w-10">
+                                            <span className="text-xs">{driver.name.charAt(0)}</span>
+                                        </div>
+                                    </div>
+                                    <div>
+                                        <h3 className="font-bold text-gray-800">{driver.name}</h3>
+                                        <p className="text-xs text-gray-500">{driver.mobile}</p>
+                                    </div>
+                                </div>
+                                <div className="badge badge-indigo badge-outline text-[10px] font-black tracking-widest uppercase">Driver</div>
+                            </div>
+
+                            <div className="space-y-2 mb-6">
+                                <h4 className="text-[10px] font-black text-gray-400 uppercase tracking-widest flex items-center gap-1">
+                                    <Warehouse size={10} /> Assigned Hubs ({driver.hubs?.length || 0})
+                                </h4>
+                                <div className="flex flex-wrap gap-1.5">
+                                    {driver.hubs?.map(hub => (
+                                        <span key={hub._id} className="badge badge-ghost badge-sm font-bold text-gray-600 border-gray-200">
+                                            {hub.name}
+                                        </span>
+                                    ))}
+                                    {(!driver.hubs || driver.hubs.length === 0) && (
+                                        <span className="text-xs text-gray-400 italic">No hubs assigned</span>
+                                    )}
+                                </div>
+                            </div>
+
+                            <div className="card-actions justify-end pt-4 border-t border-gray-50">
+                                <button 
+                                    className="btn btn-sm btn-outline btn-primary gap-2"
+                                    onClick={() => {
+                                        setSelectedDriver(driver);
+                                        setIsManageHubsOpen(true);
+                                    }}
+                                >
+                                    <Edit size={14} /> Manage Hubs
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                ))}
+                {drivers.length === 0 && (
+                    <div className="col-span-full p-20 text-center border-2 border-dashed rounded-2xl border-gray-200">
+                        <Users size={48} className="mx-auto mb-4 text-gray-300 opacity-50" />
+                        <p className="text-gray-500 font-medium">No active Truck Drivers found in the system.</p>
+                        <p className="text-xs text-gray-400 mt-1">Assign the 'TRUCK_DRIVER' role to employees to list them here.</p>
+                    </div>
+                )}
+            </div>
+
+            {/* Manage Hubs Modal */}
+            {isManageHubsOpen && (
+                <div className="modal modal-open">
+                    <div className="modal-box w-11/12 max-w-2xl bg-white border border-indigo-100 shadow-2xl p-0 overflow-hidden">
+                        <div className="bg-indigo-600 p-6 text-white">
+                            <h3 className="font-black text-xl uppercase tracking-tight flex items-center gap-2">
+                                <Truck size={24} /> Assign Hubs to {selectedDriver?.name}
+                            </h3>
+                            <p className="text-xs text-indigo-100 mt-1 font-bold">Select the hubs this driver will collect milk for from the factory.</p>
+                        </div>
+                        
+                        <div className="p-6 max-h-[60vh] overflow-y-auto">
+                            <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                                {allHubs.map(hub => {
+                                    const isAssigned = selectedDriver?.hubs?.some(h => (h._id === hub._id || h === hub._id));
+                                    return (
+                                        <label key={hub._id} className="flex items-center gap-3 p-3 rounded-xl border border-gray-100 hover:bg-indigo-50/50 cursor-pointer transition-all active:scale-95 shadow-sm">
+                                            <input 
+                                                type="checkbox" 
+                                                className="checkbox checkbox-primary checkbox-sm"
+                                                defaultChecked={isAssigned}
+                                                onChange={(e) => {
+                                                    const currentHubs = selectedDriver?.hubs?.map(h => (h._id || h)) || [];
+                                                    const updatedHubs = e.target.checked 
+                                                        ? [...currentHubs, hub._id]
+                                                        : currentHubs.filter(id => id !== hub._id);
+                                                    setSelectedDriver({ ...selectedDriver, hubs: updatedHubs });
+                                                }}
+                                            />
+                                            <div className="flex flex-col">
+                                                <span className="font-black text-gray-800 text-sm uppercase">{hub.name}</span>
+                                                <span className="text-[10px] font-bold text-gray-400 uppercase tracking-widest">{hub.city?.name}</span>
+                                            </div>
+                                        </label>
+                                    );
+                                })}
+                            </div>
+                        </div>
+
+                        <div className="modal-action p-6 pt-2 bg-gray-50 flex gap-3">
+                            <button className="btn btn-ghost" onClick={() => setIsManageHubsOpen(false)}>Cancel</button>
+                            <button 
+                                className="btn btn-primary px-8" 
+                                onClick={() => updateHubsMutation.mutate({ 
+                                    id: selectedDriver._id, 
+                                    hubs: selectedDriver.hubs 
+                                })}
+                                disabled={updateHubsMutation.isPending}
+                            >
+                                {updateHubsMutation.isPending ? "Saving..." : "Apply Mapping"}
+                            </button>
                         </div>
                     </div>
                 </div>

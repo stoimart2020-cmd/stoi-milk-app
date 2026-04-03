@@ -18,6 +18,8 @@ const {
     createDeliveryRoute, getDeliveryRoutes, updateDeliveryRoute, deleteDeliveryRoute,
     // Hierarchy
     getHierarchy,
+    // Truck Driver
+    getTruckDrivers, updateTruckDriverHubs,
 } = require("../controllers/logisticsController");
 
 // Factory Routes
@@ -79,5 +81,11 @@ router.route("/delivery-routes/:id")
 // Full Hierarchy Tree
 router.route("/hierarchy")
     .get(protect, authorize("ADMIN", "SUPERADMIN"), getHierarchy);
+
+// Truck Driver Route Management
+router.route("/truck-drivers")
+    .get(protect, authorize("ADMIN", "SUPERADMIN"), getTruckDrivers);
+router.route("/truck-drivers/:id/hubs")
+    .put(protect, authorize("ADMIN", "SUPERADMIN"), updateTruckDriverHubs);
 
 module.exports = router;

@@ -240,6 +240,19 @@ export const getDailyStockStatus = async (date) => {
 };
 
 export const addProductionLog = async (data) => {
-    const response = await axiosInstance.post('/api/inventory/log', data);
+    const response = await axiosInstance.post('/inventory/log', data);
     return response.data;
+};
+
+// ========================
+// TRUCK DRIVER Hub Mapping
+// ========================
+export const getTruckDrivers = async () => {
+    const res = await axiosInstance.get("/api/logistics/truck-drivers");
+    return res.data;
+};
+
+export const updateTruckDriverHubs = async (id, hubs) => {
+    const res = await axiosInstance.put(`/api/logistics/truck-drivers/${id}/hubs`, { hubs });
+    return res.data;
 };

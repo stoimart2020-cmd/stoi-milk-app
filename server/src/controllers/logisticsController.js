@@ -5,6 +5,7 @@ const Area = require("../models/Area");
 const Hub = require("../models/Hub");
 const DeliveryPoint = require("../models/DeliveryPoint");
 const DeliveryRoute = require("../models/DeliveryRoute");
+const Employee = require("../models/Employee");
 
 // ========================
 // FACTORY Controllers
@@ -370,6 +371,35 @@ exports.getHierarchy = async (req, res) => {
         }
 
         res.status(200).json({ success: true, result: hierarchy });
+    } catch (error) {
+        res.status(500).json({ success: false, message: error.message });
+    }
+};
+
+// ========================
+// TRUCK DRIVER Hub Mapping
+// ========================
+exports.getTruckDrivers = async (req, res) => {
+    try {
+        const drivers = await Employee.find({ role: "TRUCK_DRIVER", isActive: true })
+            .select("name email mobile hubs isActive")
+            .populate("hubs", "name code city");
+        res.status(200).json({ success: true, result: drivers });
+    } catch (error) {
+        res.status(500).json({ success: false, message: error.message });
+    }
+};
+
+exports.updateTruckDriverHubs = async (req, res) => {
+    try {
+        const { hubs } = req.body; // Array of Hub IDs
+        const driver = await Employee.findByIdAndUpdate(
+            req.params.id, 
+            { hubs }, 
+            { new: true }
+        ).populate("hubs", "name code");
+        
+        res.status(200).json({ success: true, result: driver });
     } catch (error) {
         res.status(500).json({ success: false, message: error.message });
     }

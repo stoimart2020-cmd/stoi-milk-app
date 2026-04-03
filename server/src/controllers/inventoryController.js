@@ -136,7 +136,11 @@ exports.getLogisticsForecast = async (req, res) => {
                 $lte: new Date(targetDate.getTime() + 86399999) 
             },
             status: { $ne: "cancelled" }
-        }).populate("customer products.product assignedRider");
+        }).populate({
+            path: "customer",
+            select: "name hub",
+            populate: { path: "hub", select: "name" }
+        }).populate("products.product").populate("assignedRider", "name").lean();
 
         if (existingOrders.length > 0) {
             console.log(`[Logistics] Using ${existingOrders.length} actual orders for ${dateStr}`);
@@ -164,10 +168,16 @@ exports.getLogisticsForecast = async (req, res) => {
                 status: "active",
                 startDate: { $lte: targetDate },
                 $or: [{ endDate: { $exists: false } }, { endDate: { $gte: targetDate } }]
-            }).populate("user product assignedRider");
+            }).populate({
+                path: "user",
+                select: "name hub deliveryBoy",
+                populate: { path: "hub", select: "name" }
+            }).populate("product").populate("assignedRider", "name").lean();
 
-            // Also load user delivery boys for fallback
-            const User = require("../models/User");
+            // Pre-fetch all riders for fallback mapping (avoid findById in loop)
+            const allRiders = await Employee.find({ role: { $in: ["RIDER", "TRUCK_DRIVER"] } }).select("name").lean();
+            const riderMap = {};
+            allRiders.forEach(r => riderMap[r._id.toString()] = r.name);
             
             for (const sub of subscriptions) {
                 let qty = 0;
@@ -195,15 +205,12 @@ exports.getLogisticsForecast = async (req, res) => {
                 let riderName = "Unassigned Rider";
                 
                 if (sub.assignedRider) {
-                    riderId = sub.assignedRider._id.toString();
-                    riderName = sub.assignedRider.name;
+                    riderId = sub.assignedRider._id?.toString() || sub.assignedRider.toString();
+                    riderName = sub.assignedRider.name || "Assigned Rider";
                 } else if (sub.user?.deliveryBoy) {
-                    // Quick fetch of customer delivery boy name if populated
-                    const dboy = await Employee.findById(sub.user.deliveryBoy);
-                    if (dboy) {
-                        riderId = dboy._id.toString();
-                        riderName = dboy.name;
-                    }
+                    const dboyId = sub.user.deliveryBoy.toString();
+                    riderId = dboyId;
+                    riderName = riderMap[dboyId] || "Assigned Rider";
                 }
 
                 const nodes = getStructures(hubId, hubName, riderId, riderName);
