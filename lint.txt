@@ -1,0 +1,8 @@
+﻿
+C:\Users\Jeffry\stoi-milk-app\stoi-milk-app\src\features\orders\Subscriptions.jsx
+   72:11  warning  The 'subscriptions' logical expression could make the dependencies of useMemo Hook (at line 130) change on every render. To fix this, wrap the initialization of 'subscriptions' in its own useMemo() Hook  react-hooks/exhaustive-deps
+  174:11  error    'getStatusColor' is assigned a value but never used. Allowed unused vars must match /^[A-Z_]/u                                                                                                              no-unused-vars
+  184:45  error    'Icon' is defined but never used                                                                                                                                                                            no-unused-vars
+
+Γ£û 3 problems (2 errors, 1 warning)
+

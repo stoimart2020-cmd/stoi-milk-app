@@ -171,17 +171,9 @@ export const Subscriptions = ({ type = 'regular' }) => {
             : <ChevronDown size={10} className="text-indigo-600" />;
     };
 
-    const getStatusColor = (status) => {
-        switch (status) {
-            case 'active': return 'bg-green-100 text-green-700';
-            case 'paused': return 'bg-yellow-100 text-yellow-700';
-            case 'cancelled': return 'bg-red-100 text-red-700';
-            default: return 'bg-gray-100 text-gray-700';
-        }
-    };
 
     // Stat Card with filter action
-    const StatCard = ({ title, value, icon: Icon, color, bgColor, filterKey }) => {
+    const StatCard = ({ title, value, icon: IconComponent, color, bgColor, filterKey }) => {
         const isActive = cardFilter === filterKey;
         return (
             <div
@@ -196,7 +188,7 @@ export const Subscriptions = ({ type = 'regular' }) => {
                         <h3 className="text-2xl font-bold">{value}</h3>
                     </div>
                     <div className={`${color} bg-white rounded-full p-2.5 shadow-sm`}>
-                        <Icon size={20} />
+                        {IconComponent && <IconComponent size={20} />}
                     </div>
                 </div>
                 {isActive && <p className="text-[10px] text-indigo-600 font-semibold mt-2 uppercase">✓ Filtering</p>}
