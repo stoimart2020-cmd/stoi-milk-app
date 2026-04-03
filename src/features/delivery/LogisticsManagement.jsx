@@ -482,15 +482,17 @@ const LogisticsModal = ({ type, item, onClose }) => {
 const DemandForecast = () => {
     const tomorrow = new Date(Date.now() + 86400000).toISOString().split('T')[0];
     const [selectedDate, setSelectedDate] = useState(tomorrow);
+    const [expandedTrucks, setExpandedTrucks] = useState({});
+    const [expandedHubs, setExpandedHubs] = useState({});
 
     const { data: forecast, isLoading, isError, refetch } = useQuery({
         queryKey: ["logistics-forecast", selectedDate],
         queryFn: () => getLogisticsForecast(selectedDate),
     });
 
-    const handlePrint = () => {
-        window.print();
-    };
+    const handlePrint = () => window.print();
+    const toggleTruck = (id) => setExpandedTrucks(p => ({ ...p, [id]: !p[id] }));
+    const toggleHub = (id) => setExpandedHubs(p => ({ ...p, [id]: !p[id] }));
 
     if (isLoading) return <div className="p-10 flex justify-center"><span className="loading loading-spinner loading-lg text-primary"></span></div>;
 
@@ -501,17 +503,13 @@ const DemandForecast = () => {
         </div>
     );
 
-    const hubIds = Object.keys(forecast?.hubs || {});
-    
-    // Extract unique products across all hubs
-    const productMap = {};
-    hubIds.forEach(hid => {
-        const products = forecast.hubs[hid].products;
-        Object.keys(products).forEach(pid => {
-            productMap[pid] = products[pid].name;
-        });
-    });
-    const productIds = Object.keys(productMap);
+    const hierarchy = forecast?.hierarchy || {};
+    const factoryProducts = hierarchy.factoryProducts || {};
+    const trucks = hierarchy.trucks || {};
+    const truckIds = Object.keys(trucks);
+    const factoryProductIds = Object.keys(factoryProducts);
+    const activeTrucks = truckIds.length;
+    const totalHubs = truckIds.reduce((sum, tid) => sum + Object.keys(trucks[tid]?.hubs || {}).length, 0);
 
     return (
         <div className="space-y-6">
@@ -519,140 +517,202 @@ const DemandForecast = () => {
             <div className="p-4 bg-base-200 flex flex-wrap gap-4 items-center justify-between no-print">
                 <div className="flex items-center gap-3">
                     <Calendar className="text-gray-500" />
-                    <input 
-                        type="date" 
+                    <input
+                        type="date"
                         className="input input-bordered"
                         value={selectedDate}
                         onChange={(e) => setSelectedDate(e.target.value)}
                     />
                 </div>
-                
                 <div className="flex gap-2">
                     <button className="btn btn-outline gap-2" onClick={handlePrint}>
                         <Printer size={18} /> Print Packing List
                     </button>
-                    <button className="btn btn-ghost btn-sm" onClick={() => refetch()}>
-                        Refresh
-                    </button>
+                    <button className="btn btn-ghost btn-sm" onClick={() => refetch()}>Refresh</button>
                 </div>
             </div>
 
             {/* Summary Cards */}
-            <div className="px-4 grid grid-cols-1 md:grid-cols-3 gap-4">
+            <div className="px-4 grid grid-cols-1 md:grid-cols-4 gap-4">
                 <div className="stats shadow bg-primary text-primary-content">
                     <div className="stat">
-                        <div className="stat-title text-primary-content opacity-70">Total Demand</div>
+                        <div className="stat-title text-primary-content opacity-70">Factory Total</div>
                         <div className="stat-value">{forecast?.totalLiters || 0} L</div>
-                        <div className="stat-desc text-primary-content opacity-70">Liters for {selectedDate}</div>
+                        <div className="stat-desc text-primary-content opacity-70">For {selectedDate}</div>
                     </div>
                 </div>
-                
                 <div className="stats shadow">
                     <div className="stat">
-                        <div className="stat-title">Active Hubs</div>
-                        <div className="stat-value">{hubIds.length}</div>
-                        <div className="stat-desc">Preparing deliveries</div>
+                        <div className="stat-title">Truck Routes</div>
+                        <div className="stat-value">{activeTrucks}</div>
+                        <div className="stat-desc">Active drivers</div>
                     </div>
                 </div>
-
+                <div className="stats shadow">
+                    <div className="stat">
+                        <div className="stat-title">Total Hubs</div>
+                        <div className="stat-value">{totalHubs}</div>
+                        <div className="stat-desc">Receiving drops</div>
+                    </div>
+                </div>
                 <div className="stats shadow">
                     <div className="stat">
                         <div className="stat-title">Products</div>
-                        <div className="stat-value">{productIds.length}</div>
+                        <div className="stat-value">{factoryProductIds.length}</div>
                         <div className="stat-desc">Unique variants</div>
                     </div>
                 </div>
             </div>
 
-            {/* Forecast Table */}
-            <div className="px-4 pb-8 overflow-x-auto">
-                <table className="table table-zebra w-full border border-base-300">
-                    <thead className="bg-base-200">
-                        <tr>
-                            <th className="border-r border-base-300 sticky left-0 bg-base-200 z-10">Hub Name</th>
-                            {productIds.map(pid => (
-                                <th key={pid} className="text-center border-r border-base-300">
-                                    {productMap[pid]}
-                                </th>
-                            ))}
-                            <th className="bg-primary/10 text-primary font-bold text-right">Total (L)</th>
-                        </tr>
-                    </thead>
-                    <tbody>
-                        {hubIds.map(hid => {
-                            const hub = forecast.hubs[hid];
-                            let hubTotalLiters = 0;
-                            
-                            return (
-                                <tr key={hid}>
-                                    <td className="font-bold border-r border-base-300 sticky left-0 bg-base-100 z-10">
-                                        {hub.name}
-                                    </td>
-                                    {productIds.map(pid => {
-                                        const pData = hub.products[pid];
-                                        if (pData) hubTotalLiters += pData.liters;
-                                        
-                                        return (
-                                            <td key={pid} className="text-center border-r border-base-300">
-                                                {pData ? (
-                                                    <div className="flex flex-col">
-                                                        <span className="font-bold text-lg">{pData.units}</span>
-                                                        <span className="text-xs text-gray-400">({pData.liters.toFixed(1)}L)</span>
-                                                    </div>
-                                                ) : <span className="text-gray-300">-</span>}
-                                            </td>
-                                        );
-                                    })}
-                                    <td className="text-right font-bold text-primary bg-primary/5">
-                                        {hubTotalLiters.toFixed(2)} L
-                                    </td>
+            {/* Factory-Level Summary Table */}
+            <div className="px-4">
+                <div className="bg-primary/5 border border-primary/20 rounded-xl overflow-hidden mb-6">
+                    <div className="bg-primary text-primary-content px-6 py-3 font-bold uppercase text-sm tracking-wider">
+                        🏭 Factory Production Plan — Grand Total
+                    </div>
+                    <div className="overflow-x-auto">
+                        <table className="table table-sm w-full">
+                            <thead><tr>
+                                <th>Product</th><th className="text-center">Units</th>
+                                <th className="text-center">Volume (L)</th><th className="text-center">Crates</th>
+                            </tr></thead>
+                            <tbody>
+                                {factoryProductIds.map(pid => {
+                                    const p = factoryProducts[pid];
+                                    const crates = Math.ceil(p.units / (p.unitsPerCrate || 12));
+                                    return (
+                                        <tr key={pid}>
+                                            <td className="font-bold">{p.name}</td>
+                                            <td className="text-center font-black text-primary text-lg">{p.units}</td>
+                                            <td className="text-center">{p.liters.toFixed(1)} L</td>
+                                            <td className="text-center"><span className="badge badge-primary badge-outline">{crates} crates</span></td>
+                                        </tr>
+                                    );
+                                })}
+                                {factoryProductIds.length === 0 && (
+                                    <tr><td colSpan={4} className="text-center text-gray-400 py-8">No demand data for this date.</td></tr>
+                                )}
+                            </tbody>
+                            <tfoot className="font-bold border-t-2">
+                                <tr>
+                                    <td>GRAND TOTAL</td>
+                                    <td className="text-center text-primary">{factoryProductIds.reduce((s, pid) => s + factoryProducts[pid].units, 0)}</td>
+                                    <td className="text-center text-primary">{forecast?.totalLiters} L</td>
+                                    <td></td>
                                 </tr>
-                            );
-                        })}
-                    </tbody>
-                    {/* Grand Totals Footer */}
-                    <tfoot className="bg-base-200 font-bold border-t-2 border-base-400">
-                        <tr>
-                            <td className="border-r border-base-300 sticky left-0 bg-base-200 z-10">GRAND TOTAL</td>
-                            {productIds.map(pid => {
-                                let totalUnits = 0;
-                                let totalLiters = 0;
-                                hubIds.forEach(hid => {
-                                    const pData = forecast.hubs[hid].products[pid];
-                                    if (pData) {
-                                        totalUnits += pData.units;
-                                        totalLiters += pData.liters;
-                                    }
-                                });
-                                return (
-                                    <td key={pid} className="text-center border-r border-base-300 text-primary">
-                                        <div className="flex flex-col">
-                                            <span className="text-lg">{totalUnits}</span>
-                                            <span className="text-xs">({totalLiters.toFixed(1)}L)</span>
+                            </tfoot>
+                        </table>
+                    </div>
+                </div>
+
+                {/* 4-Tier Drilldown: Truck → Hub → Rider */}
+                <h3 className="text-sm font-black uppercase text-gray-500 tracking-widest mb-3 no-print">📦 Dispatch Breakdown by Truck Route</h3>
+                <div className="space-y-4">
+                    {truckIds.length === 0 && (
+                        <div className="text-center text-gray-400 py-10 border border-dashed rounded-xl">
+                            No truck drivers assigned to hubs yet. Assign hubs to Truck Driver employees to see the route breakdown here.
+                        </div>
+                    )}
+                    {truckIds.map(tid => {
+                        const truck = trucks[tid];
+                        const hubIds = Object.keys(truck.hubs || {});
+                        const truckProductIds = Object.keys(truck.products || {});
+                        const isExpanded = expandedTrucks[tid] !== false;
+                        return (
+                            <div key={tid} className="border border-base-300 rounded-xl overflow-hidden shadow-sm">
+                                <button className="w-full flex items-center justify-between px-5 py-3 bg-indigo-50 hover:bg-indigo-100 transition-colors" onClick={() => toggleTruck(tid)}>
+                                    <div className="flex items-center gap-3">
+                                        <span className="text-lg">🚚</span>
+                                        <div className="text-left">
+                                            <p className="font-black text-indigo-900 uppercase tracking-tight">{truck.name}</p>
+                                            <p className="text-xs text-indigo-500">{hubIds.length} Hub{hubIds.length !== 1 ? 's' : ''} · {truckProductIds.reduce((s, pid) => s + (truck.products[pid]?.units || 0), 0)} units</p>
                                         </div>
-                                    </td>
-                                );
-                            })}
-                            <td className="text-right text-xl text-primary bg-primary/10">
-                                {forecast?.totalLiters} L
-                            </td>
-                        </tr>
-                    </tfoot>
-                </table>
+                                    </div>
+                                    <div className="flex items-center gap-4">
+                                        {truckProductIds.map(pid => (
+                                            <div key={pid} className="text-right hidden md:block">
+                                                <p className="text-xs text-indigo-400">{truck.products[pid].name}</p>
+                                                <p className="font-black text-indigo-700">{truck.products[pid].units} units</p>
+                                            </div>
+                                        ))}
+                                        <span className="text-indigo-400">{isExpanded ? '▲' : '▼'}</span>
+                                    </div>
+                                </button>
+                                {isExpanded && (
+                                    <div className="divide-y divide-base-200">
+                                        {hubIds.map(hid => {
+                                            const hub = truck.hubs[hid];
+                                            const riderIds = Object.keys(hub.riders || {});
+                                            const hubProductIds = Object.keys(hub.products || {});
+                                            const isHubExpanded = expandedHubs[hid] !== false;
+                                            return (
+                                                <div key={hid} className="bg-white">
+                                                    <button className="w-full flex items-center justify-between px-8 py-2.5 bg-teal-50/60 hover:bg-teal-100/60 transition-colors" onClick={() => toggleHub(hid)}>
+                                                        <div className="flex items-center gap-2">
+                                                            <span>🏪</span>
+                                                            <div className="text-left">
+                                                                <p className="font-bold text-teal-800">{hub.name}</p>
+                                                                <p className="text-xs text-teal-500">{riderIds.length} Rider{riderIds.length !== 1 ? 's' : ''}</p>
+                                                            </div>
+                                                        </div>
+                                                        <div className="flex items-center gap-3">
+                                                            {hubProductIds.map(pid => (
+                                                                <span key={pid} className="badge badge-outline badge-success text-xs">
+                                                                    {hub.products[pid].name}: {hub.products[pid].units}
+                                                                </span>
+                                                            ))}
+                                                            <span className="text-teal-400 text-xs">{isHubExpanded ? '▲' : '▼'}</span>
+                                                        </div>
+                                                    </button>
+                                                    {isHubExpanded && (
+                                                        <div className="bg-gray-50/30">
+                                                            {riderIds.map(rid => {
+                                                                const rider = hub.riders[rid];
+                                                                const riderProductIds = Object.keys(rider.products || {});
+                                                                return (
+                                                                    <div key={rid} className="flex items-center justify-between px-12 py-2 border-b border-gray-100 last:border-0 hover:bg-gray-100/50">
+                                                                        <div className="flex items-center gap-2">
+                                                                            <span className="text-sm">🏍️</span>
+                                                                            <span className="font-semibold text-gray-700 text-sm">{rider.name}</span>
+                                                                        </div>
+                                                                        <div className="flex items-center gap-2 flex-wrap justify-end">
+                                                                            {riderProductIds.map(pid => {
+                                                                                const p = rider.products[pid];
+                                                                                const crates = p.unitsPerCrate > 1 ? Math.ceil(p.units / p.unitsPerCrate) : null;
+                                                                                return (
+                                                                                    <div key={pid} className="text-right">
+                                                                                        <span className="text-xs text-gray-400">{p.name}: </span>
+                                                                                        <span className="font-black text-gray-800">{p.units}</span>
+                                                                                        {crates && <span className="text-xs text-primary ml-1">({crates}cr)</span>}
+                                                                                    </div>
+                                                                                );
+                                                                            })}
+                                                                        </div>
+                                                                    </div>
+                                                                );
+                                                            })}
+                                                        </div>
+                                                    )}
+                                                </div>
+                                            );
+                                        })}
+                                    </div>
+                                )}
+                            </div>
+                        );
+                    })}
+                </div>
             </div>
 
-            {/* Print Header (Visible only on print) */}
             <style dangerouslySetInnerHTML={{ __html: `
                 @media print {
                     .no-print { display: none !important; }
                     body { background: white !important; font-size: 12pt; }
-                    .bg-base-100 { background: white !important; box-shadow: none !important; }
                     .table { width: 100% !important; border-collapse: collapse !important; border: 1px solid #ccc !important; }
                     th, td { border: 1px solid #ccc !important; padding: 8px !important; color: black !important; }
                     .sticky { position: static !important; }
                     .text-primary { color: black !important; }
-                    .bg-primary, .bg-primary/10, .bg-primary/5 { background: transparent !important; }
-                    tfoot { border-top: 2px solid black !important; }
+                    .bg-primary, .bg-indigo-50, .bg-teal-50 { background: #f5f5f5 !important; -webkit-print-color-adjust: exact; }
                 }
             `}} />
         </div>
