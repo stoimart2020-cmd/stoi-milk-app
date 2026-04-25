@@ -103,7 +103,7 @@ export const RiderDeliveryDetailModal = ({
         }
     };
 
-    const handleSave = (statusOverride) => {
+    const handleSave = (statusOverride, isNext = false) => {
         let finalStatus = statusOverride || 'delivered';
         if (finalStatus !== 'cancelled' && localProducts.length === 0 && !isCustomerOnly && delivery.orderType !== 'BOTTLE_COLLECTION') {
             finalStatus = 'cancelled';
@@ -138,7 +138,7 @@ export const RiderDeliveryDetailModal = ({
             deliveredAssets,
             returnedAssets
         };
-        onSaveDetails(payload, arguments[1] === true); // pass isNext boolean
+        onSaveDetails(payload, isNext);
     };
 
     if (cancelPrompt.show) {
