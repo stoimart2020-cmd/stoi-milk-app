@@ -591,11 +591,11 @@ exports.updateOrderStatus = async (req, res) => {
                 let customerInstance = await User.findById(order.customer._id || order.customer);
                 if (customerInstance) {
                     const mode = (order.paymentMode || "").toUpperCase();
-                    if (mode === "WALLET") {
-                        // Re-deduct from wallet
-                        customerInstance.walletBalance = Number(customerInstance.walletBalance || 0) - Number(order.totalAmount);
-                        await customerInstance.save();
+                    
+                    // 1. Charge the customer for the delivered goods
+                    customerInstance.walletBalance = Number(customerInstance.walletBalance || 0) - Number(order.totalAmount);
 
+                    if (mode === "WALLET") {
                         const Transaction = require("../models/Transaction");
                         await Transaction.create({
                             user: customerInstance._id,
@@ -608,26 +608,28 @@ exports.updateOrderStatus = async (req, res) => {
                             performedBy: req.user._id,
                             balanceAfter: customerInstance.walletBalance
                         });
-                    } else if (order.paymentMode === "Cash" || order.paymentMode === "CASH") {
-                        // Start by charging the customer for the order they are receiving
-                        customerInstance.walletBalance = (customerInstance.walletBalance || 0) - order.totalAmount;
+                    }
 
-                        const cashCollectedValue = (cashAmount !== undefined && cashAmount !== "") ? Number(cashAmount) : order.totalAmount;
-                        const chequeValue = (chequeAmount !== undefined && chequeAmount !== "") ? Number(chequeAmount) : 0;
+                    // 2. If the rider collected cash/cheque, credit it to the customer's wallet
+                    const cashCollectedValue = (cashAmount !== undefined && cashAmount !== "") ? Number(cashAmount) : (mode === "CASH" ? Number(order.totalAmount) : 0);
+                    const chequeValue = (chequeAmount !== undefined && chequeAmount !== "") ? Number(chequeAmount) : 0;
 
+                    if (cashCollectedValue > 0 || chequeValue > 0) {
                         customerInstance.walletBalance += (cashCollectedValue + chequeValue);
-                        await customerInstance.save();
-
                         order.cashCollected = cashCollectedValue;
                         order.chequeCollected = chequeValue;
 
-                        const Employee = require("../models/Employee");
-                        const rider = await Employee.findById(req.user._id);
-                        if (rider && cashCollectedValue > 0) {
-                            rider.walletBalance = (rider.walletBalance || 0) + cashCollectedValue;
-                            await rider.save();
+                        if (cashCollectedValue > 0) {
+                            const Employee = require("../models/Employee");
+                            const rider = await Employee.findById(req.user._id);
+                            if (rider) {
+                                rider.walletBalance = Number(rider.walletBalance || 0) + cashCollectedValue;
+                                await rider.save();
+                            }
                         }
                     }
+
+                    await customerInstance.save();
                 }
             }
 
