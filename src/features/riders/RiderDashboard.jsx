@@ -176,6 +176,7 @@ export const RiderDashboard = () => {
         canceled: todayDeliveries.filter(d => d.status === 'cancelled').length,
         payment: todayDeliveries.reduce((sum, d) => sum + (d.paymentStatus === 'pending' ? d.totalAmount : 0), 0),
         cashToCollect: todayDeliveries.reduce((sum, d) => sum + (d.paymentMode === 'Cash' && d.paymentStatus === 'pending' ? d.totalAmount : 0), 0),
+        cashCollectedToday: deliveredToday.reduce((sum, d) => sum + (d.cashCollected || (d.paymentMode === 'Cash' ? d.totalAmount : 0)), 0),
         bottlesToCollect: bottleStatsData?.result?.bottlesToCollect || 0,
         earnings: financials.totalEarnings || 0,
         cashOutstanding: riderCustomers.reduce((sum, customer) => {
@@ -929,24 +930,31 @@ export const RiderDashboard = () => {
                 <div className="flex gap-3 overflow-x-auto no-scrollbar pb-2">
                     <div className="bg-[#b3ddd9] min-w-[105px] flex-1 p-3 rounded-[20px] shadow-sm flex flex-col justify-between h-28">
                         <div>
+                            <div className="text-[15px] font-medium text-slate-800">Collected</div>
+                            <div className="text-[11px] text-slate-500 font-medium">Today</div>
+                        </div>
+                        <div className="text-[28px] text-slate-800 tracking-tight leading-none pt-2">₹{stats.cashCollectedToday || 0}</div>
+                    </div>
+                    <div className="bg-[#b6e2df] min-w-[105px] flex-1 p-3 rounded-[20px] shadow-sm flex flex-col justify-between h-28">
+                        <div>
                             <div className="text-[15px] font-medium text-slate-800">Payment</div>
                             <div className="text-[11px] text-slate-500 font-medium">To Collect</div>
                         </div>
-                        <div className="text-[28px] text-slate-800 tracking-tight leading-none pt-2">{stats.cashToCollect || 0}</div>
+                        <div className="text-[28px] text-slate-800 tracking-tight leading-none pt-2">₹{stats.cashToCollect || 0}</div>
                     </div>
-                    <div className="bg-[#b6e2df] min-w-[105px] flex-1 p-3 rounded-[20px] shadow-sm flex flex-col justify-between h-28">
+                    <div className="bg-[#dad5f5] min-w-[105px] flex-1 p-3 rounded-[20px] shadow-sm flex flex-col justify-between h-28">
                         <div>
                             <div className="text-[15px] font-medium text-slate-800">Bottle</div>
                             <div className="text-[11px] text-slate-500 font-medium">To Collect</div>
                         </div>
                         <div className="text-[28px] text-slate-800 tracking-tight leading-none pt-2">{stats.bottlesToCollect || 0}</div>
                     </div>
-                    <div className="bg-[#dad5f5] min-w-[105px] flex-1 p-3 rounded-[20px] shadow-sm flex flex-col justify-between h-28">
+                    <div className="bg-[#f5e6d3] min-w-[105px] flex-1 p-3 rounded-[20px] shadow-sm flex flex-col justify-between h-28">
                         <div>
                             <div className="text-[15px] font-medium text-slate-800">Cash</div>
                             <div className="text-[11px] text-slate-500 font-medium">Outstanding</div>
                         </div>
-                        <div className="text-[28px] text-slate-800 tracking-tight leading-none pt-2">{stats.cashOutstanding || 0}</div>
+                        <div className="text-[28px] text-slate-800 tracking-tight leading-none pt-2">₹{stats.cashOutstanding || 0}</div>
                     </div>
                 </div>
 

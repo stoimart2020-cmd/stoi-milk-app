@@ -283,14 +283,16 @@ export const DeliveryDashboard = () => {
 
     const paymentCustomers = useMemo(() => {
         if (!paymentDrilldown) return [];
-        return orders.filter(o => o.status === 'delivered' && ['CASH', 'Cash'].includes(o.paymentMode)).map(o => ({
-            orderId: o.orderId,
-            customerId: o.customer?._id,
-            customer: o.customer?.name || 'Unknown',
-            phone: o.customer?.mobile || o.customer?.phone || '',
-            amount: o.totalAmount || 0,
-            rider: o.assignedRider?.name || 'Unassigned'
-        }));
+        return orders
+            .filter(o => o.status === 'delivered' && (['CASH', 'Cash'].includes(o.paymentMode) || (o.cashCollected && o.cashCollected > 0)))
+            .map(o => ({
+                orderId: o.orderId,
+                customerId: o.customer?._id,
+                customerName: o.customer?.name || 'Unknown',
+                phone: o.customer?.mobile || o.customer?.phone || '',
+                amount: o.cashCollected !== undefined ? o.cashCollected : (o.totalAmount || 0),
+                riderName: o.assignedRider?.name || 'Unassigned'
+            }));
     }, [paymentDrilldown, orders]);
 
     // --- PDF Sheet Generators ---

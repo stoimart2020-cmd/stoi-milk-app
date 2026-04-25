@@ -84,8 +84,9 @@ exports.getDeliveryDashboard = async (req, res) => {
                     cashCollected: {
                         $sum: {
                             $cond: [
-                                { $and: [{ $eq: ["$status", "delivered"] }, { $in: ["$paymentMode", ["CASH", "Cash"]] }] },
-                                "$totalAmount", 0
+                                { $eq: ["$status", "delivered"] },
+                                { $ifNull: ["$cashCollected", { $cond: [{ $in: ["$paymentMode", ["CASH", "Cash"]] }, "$totalAmount", 0] }] },
+                                0
                             ]
                         }
                     }

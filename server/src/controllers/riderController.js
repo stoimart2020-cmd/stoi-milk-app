@@ -405,7 +405,10 @@ exports.getRiderFinancials = async (req, res) => {
         if (!employee) return res.status(404).json({ success: false, message: "Employee not found" });
 
         // Calculate cash collected from orders
-        const orderQuery = { assignedRider: employee._id, status: 'delivered', paymentMode: 'Cash' };
+        const orderQuery = { 
+            assignedRider: employee._id, 
+            status: 'delivered'
+        };
         if (month && year) {
             const m = parseInt(month) - 1;
             const y = parseInt(year);
@@ -416,7 +419,16 @@ exports.getRiderFinancials = async (req, res) => {
 
         const cashStats = await Order.aggregate([
             { $match: orderQuery },
-            { $group: { _id: null, total: { $sum: "$totalAmount" } } }
+            { 
+                $group: { 
+                    _id: null, 
+                    total: { 
+                        $sum: { 
+                            $ifNull: ["$cashCollected", { $cond: [{ $in: ["$paymentMode", ["CASH", "Cash"]] }, "$totalAmount", 0] }]
+                        } 
+                    } 
+                } 
+            }
         ]);
 
         const totalCashCollected = cashStats[0]?.total || 0;
@@ -810,11 +822,19 @@ exports.getRiderSelfFinancials = async (req, res) => {
                 $match: {
                     assignedRider: employee._id,
                     status: 'delivered',
-                    paymentMode: 'Cash',
                     deliveryDate: { $gte: start, $lte: end }
                 }
             },
-            { $group: { _id: null, total: { $sum: "$totalAmount" } } }
+            { 
+                $group: { 
+                    _id: null, 
+                    total: { 
+                        $sum: { 
+                            $ifNull: ["$cashCollected", { $cond: [{ $in: ["$paymentMode", ["CASH", "Cash"]] }, "$totalAmount", 0] }]
+                        } 
+                    } 
+                } 
+            }
         ]);
         const totalCashCollected = cashStats[0]?.total || 0;
 
