@@ -692,7 +692,7 @@ export const DeliveryDashboard = () => {
                                                                 <div className="w-px h-8 bg-gray-200 mx-1 mt-1"></div>
                                                                 <div className="text-center flex-1">
                                                                     <p className="text-[9px] text-gray-500 font-bold uppercase">Canceled</p>
-                                                                    <p className="font-bold text-[#f27424] text-lg leading-none mt-1">0</p>
+                                                                    <p className="font-bold text-[#f27424] text-lg leading-none mt-1">{rs.cancelled || 0}</p>
                                                                 </div>
                                                                 <div className="w-px h-8 bg-gray-200 mx-1 mt-1"></div>
                                                                 <div className="text-center flex-1">

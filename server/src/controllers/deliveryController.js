@@ -79,6 +79,7 @@ exports.getDeliveryDashboard = async (req, res) => {
                     delivered: { $sum: { $cond: [{ $eq: ["$status", "delivered"] }, 1, 0] } },
                     pending: { $sum: { $cond: [{ $in: ["$status", ["pending", "confirmed"]] }, 1, 0] } },
                     out: { $sum: { $cond: [{ $eq: ["$status", "out_for_delivery"] }, 1, 0] } },
+                    cancelled: { $sum: { $cond: [{ $eq: ["$status", "cancelled"] }, 1, 0] } },
                     revenue: { $sum: { $cond: [{ $eq: ["$status", "delivered"] }, "$totalAmount", 0] } },
                     cashCollected: {
                         $sum: {
