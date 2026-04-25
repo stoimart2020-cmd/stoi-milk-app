@@ -1105,6 +1105,7 @@ export const DeliveryDashboard = () => {
                                                                                         </div>
                                                                                     </div>
                                                                                     
+                                                                                    <div className="flex items-center gap-6">
                                                                                         <span className={`${order.status === 'delivered' ? 'bg-[#cbf4db] text-[#1e7647]' : 'bg-gray-200 text-gray-600'} px-3 py-1.5 rounded-full text-[10px] font-bold uppercase tracking-wider shadow-sm`}>
                                                                                             {order.status}
                                                                                         </span>
