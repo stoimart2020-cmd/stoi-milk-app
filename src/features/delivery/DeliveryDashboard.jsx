@@ -2,6 +2,7 @@ import { useState, useMemo } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { queryClient } from "../../shared/utils/queryClient";
 import { getDeliveryDashboard, getDeliveryOrders, bulkAssignRider, bulkUpdateStatus, generateOrdersForDate } from "../../shared/api/delivery";
+import { axiosInstance } from "../../shared/api/axios";
 import { getAllRiders } from "../../shared/api/riders";
 import toast from "react-hot-toast";
 import { format } from "date-fns";
@@ -10,7 +11,7 @@ import {
     Users, MapPin, ChevronLeft, ChevronRight, ChevronDown, Send, UserPlus,
     IndianRupee, TrendingUp, Filter, RefreshCw, Eye, Bike, Zap, Warehouse,
     MoreVertical, FileText, Edit3, ExternalLink, ArrowLeftRight, Phone,
-    ClipboardList, CheckSquare
+    ClipboardList, CheckSquare, Printer, FileSpreadsheet, GlassWater
 } from "lucide-react";
 import React from "react";
 import { useFilters } from "../../shared/context/FilterContext";
@@ -62,7 +63,6 @@ const StatusBadge = ({ status }) => {
 // =============================================
 export const DeliveryDashboard = () => {
     const [selectedDate, setSelectedDate] = useState(format(new Date(), "yyyy-MM-dd"));
-    const [activeTab, setActiveTab] = useState("overview"); // overview | orders | riders
     const [ordersSubTab, setOrdersSubTab] = useState("deliveries"); // deliveries | packing | recon | note | payment
     const [statusFilter, setStatusFilter] = useState("");
     const [riderFilter, setRiderFilter] = useState("");
@@ -71,9 +71,21 @@ export const DeliveryDashboard = () => {
     const [assignRiderId, setAssignRiderId] = useState("");
     const [expandedHubs, setExpandedHubs] = useState({});
     const [expandedRiders, setExpandedRiders] = useState({});
+    const [productDrilldown, setProductDrilldown] = useState(null); // { productId, productName, statusFilter }
+    const [paymentDrilldown, setPaymentDrilldown] = useState(false);
+    const [assignmentType, setAssignmentType] = useState("today"); // today | permanent | temporary
+    const [endDate, setEndDate] = useState("");
+    const [visiblePhoneIds, setVisiblePhoneIds] = useState([]);
+    const [editOrder, setEditOrder] = useState(null);
 
     const ObjectToggler = (setter, key) => {
         setter(prev => ({ ...prev, [key]: prev[key] === false ? true : false })); 
+    };
+
+    const togglePhoneVisibility = (id) => {
+        setVisiblePhoneIds(prev => 
+            prev.includes(id) ? prev.filter(p => p !== id) : [...prev, id]
+        );
     };
 
     const { filters } = useFilters();
@@ -106,7 +118,6 @@ export const DeliveryDashboard = () => {
     const { data: ordersData, isLoading: ordersLoading, refetch: refetchOrders } = useQuery({
         queryKey: ["deliveryOrders", orderParams],
         queryFn: () => getDeliveryOrders(orderParams),
-        enabled: activeTab !== "overview" || true, // always fetch
     });
 
     const { data: ridersData } = useQuery({
@@ -120,11 +131,18 @@ export const DeliveryDashboard = () => {
     const riders = ridersData?.result || [];
 
     const assignMutation = useMutation({
-        mutationFn: bulkAssignRider,
+        mutationFn: (payload) => bulkAssignRider({ 
+            ...payload, 
+            date: selectedDate,
+            assignmentType,
+            endDate: assignmentType === 'temporary' ? endDate : null
+        }),
         onSuccess: (data) => {
             toast.success(data.message);
             setSelectedOrders([]);
             setAssignRiderId("");
+            setAssignmentType("today");
+            setEndDate("");
             queryClient.invalidateQueries({ queryKey: ["deliveryDashboard"] });
             queryClient.invalidateQueries({ queryKey: ["deliveryOrders"] });
         },
@@ -230,6 +248,190 @@ export const DeliveryDashboard = () => {
     // --- Compute completion rate ---
     const completionRate = stats.total > 0 ? Math.round((stats.delivered / stats.total) * 100) : 0;
 
+    // --- Product drilldown customer list ---
+    const drilldownCustomers = useMemo(() => {
+        if (!productDrilldown) return [];
+        const { productId, statusFilter: sf } = productDrilldown;
+        const statusList = sf === 'scheduled' ? [] : sf === 'pending' ? ['pending', 'confirmed'] : [sf];
+        return orders.filter(order => {
+            const hasProduct = order.products?.some(p => {
+                const pid = p.product?._id || p.product;
+                return pid === productId || pid?.toString() === productId;
+            });
+            if (!hasProduct) return false;
+            if (sf === 'scheduled') return true;
+            return statusList.includes(order.status);
+        }).map(order => {
+            const matchedProduct = order.products?.find(p => {
+                const pid = p.product?._id || p.product;
+                return pid === productId || pid?.toString() === productId;
+            });
+            const addr = order.customer?.address;
+            const addressStr = typeof addr === 'string' ? addr : (addr?.fullAddress || [addr?.houseNo, addr?.floor, addr?.landmark, addr?.area].filter(Boolean).join(', ') || '');
+            return {
+                orderId: order.orderId,
+                customerId: order.customer?._id,
+                customer: order.customer?.name || 'Unknown',
+                phone: order.customer?.mobile || order.customer?.phone || '',
+                address: addressStr,
+                area: order.customer?.area?.name || '',
+                qty: matchedProduct?.quantity || 0,
+                status: order.status,
+            };
+        });
+    }, [productDrilldown, orders]);
+
+    const paymentCustomers = useMemo(() => {
+        if (!paymentDrilldown) return [];
+        return orders.filter(o => o.status === 'delivered' && ['CASH', 'Cash'].includes(o.paymentMode)).map(o => ({
+            orderId: o.orderId,
+            customerId: o.customer?._id,
+            customer: o.customer?.name || 'Unknown',
+            phone: o.customer?.mobile || o.customer?.phone || '',
+            amount: o.totalAmount || 0,
+            rider: o.assignedRider?.name || 'Unassigned'
+        }));
+    }, [paymentDrilldown, orders]);
+
+    // --- PDF Sheet Generators ---
+    const fetchAllOrders = async () => {
+        const params = { date: selectedDate, limit: 999 };
+        if (filters.hub) params.hub = filters.hub;
+        if (filters.area) params.area = filters.area;
+        if (filters.city) params.city = filters.city;
+        const res = await getDeliveryOrders(params);
+        return res?.result || [];
+    };
+
+    const openPrintWindow = (title, bodyHtml) => {
+        const w = window.open('', '_blank');
+        w.document.write(`<!DOCTYPE html><html><head><title>${title}</title>
+        <style>
+            * { margin: 0; padding: 0; box-sizing: border-box; }
+            body { font-family: 'Segoe UI', Arial, sans-serif; padding: 20px; color: #333; font-size: 12px; }
+            h1 { font-size: 18px; margin-bottom: 4px; }
+            .meta { color: #888; font-size: 11px; margin-bottom: 16px; }
+            .rider-block { margin-bottom: 20px; page-break-inside: avoid; }
+            .rider-header { background: #177a66; color: white; padding: 8px 12px; font-weight: bold; font-size: 13px; border-radius: 4px 4px 0 0; display: flex; justify-content: space-between; }
+            table { width: 100%; border-collapse: collapse; margin-bottom: 4px; }
+            th { background: #f5f5f5; text-align: left; padding: 5px 8px; font-size: 10px; text-transform: uppercase; color: #777; border-bottom: 2px solid #ddd; }
+            td { padding: 5px 8px; border-bottom: 1px solid #eee; font-size: 11px; }
+            .total-row td { font-weight: bold; background: #f9f9f9; border-top: 2px solid #ccc; }
+            .text-center { text-align: center; }
+            .text-right { text-align: right; }
+            @media print { .no-print { display: none; } .rider-block { page-break-inside: avoid; } }
+        </style></head><body>
+        <button class="no-print" onclick="window.print()" style="position:fixed;top:10px;right:10px;padding:8px 16px;background:#177a66;color:white;border:none;border-radius:6px;cursor:pointer;font-weight:bold;">Print / Save PDF</button>
+        ${bodyHtml}</body></html>`);
+        w.document.close();
+    };
+
+    const generateRouteSheet = async () => {
+        try {
+            toast.loading('Generating Route Sheet...', { id: 'route-sheet' });
+            const allOrders = await fetchAllOrders();
+            const riderGroups = {};
+            allOrders.forEach(o => {
+                const rName = o.assignedRider?.name || 'Unassigned';
+                const rId = o.assignedRider?._id || 'unassigned';
+                if (!riderGroups[rId]) riderGroups[rId] = { name: rName, phone: o.assignedRider?.mobile || '', orders: [] };
+                riderGroups[rId].orders.push(o);
+            });
+
+            let html = `<h1>🚚 Route Sheet</h1><p class="meta">${format(new Date(selectedDate), "EEEE, dd MMMM yyyy")} • ${allOrders.length} orders</p>`;
+            let isFirst = true;
+            Object.values(riderGroups).forEach(group => {
+                const prodSummary = {};
+                group.orders.forEach(o => {
+                    if (o.status === 'cancelled') return;
+                    o.products?.forEach(p => {
+                        const pName = p.product?.name || 'Unknown';
+                        prodSummary[pName] = (prodSummary[pName] || 0) + (p.quantity || 0);
+                    });
+                });
+                const summaryStr = Object.entries(prodSummary).map(([name, qty]) => `<strong>${qty}</strong> × ${name}`).join(' &nbsp;|&nbsp; ');
+
+                html += `<div class="rider-block" style="${isFirst ? '' : 'page-break-before:always;'}">
+                    <div class="rider-header"><span>${group.name}</span><span>${group.phone} • ${group.orders.length} deliveries</span></div>
+                    ${summaryStr ? `<div style="background:#e8f4f1; padding:8px 12px; font-size:11px; border:1px solid #c1e2db; border-top:none; margin-bottom:8px; border-radius:0 0 4px 4px; color:#136252;"><strong>Load Summary:</strong> ${summaryStr}</div>` : ''}
+                    <table><thead><tr><th>#</th><th>Customer</th><th>Address</th><th>Products</th><th class="text-center">Status</th></tr></thead><tbody>`;
+                group.orders.forEach((o, i) => {
+                    const addr = o.customer?.address;
+                    const addrStr = typeof addr === 'string' ? addr : (addr?.fullAddress || [addr?.houseNo, addr?.floor, addr?.landmark].filter(Boolean).join(', ') || '');
+                    const prods = o.products?.map(p => `${p.product?.name || 'Product'} × ${p.quantity}`).join(', ') || '-';
+                    html += `<tr>
+                        <td>${i + 1}</td>
+                        <td><strong>${o.customer?.name || 'Unknown'}</strong><br/><span style="color:#888;font-size:10px">${o.customer?.mobile || ''}</span></td>
+                        <td style="max-width:200px">${addrStr}</td>
+                        <td>${prods}</td>
+                        <td class="text-center"><span style="padding:2px 6px;border-radius:10px;font-size:10px;background:${o.status === 'delivered' ? '#d1fae5' : o.status === 'cancelled' ? '#fee2e2' : '#fef3c7'}">${o.status}</span></td>
+                    </tr>`;
+                });
+                html += `</tbody></table></div>`;
+                isFirst = false;
+            });
+            openPrintWindow(`Route Sheet - ${selectedDate}`, html);
+            toast.success('Route Sheet ready!', { id: 'route-sheet' });
+        } catch (err) {
+            toast.error('Failed to generate Route Sheet', { id: 'route-sheet' });
+        }
+    };
+
+    const generateDespatchSheet = async () => {
+        try {
+            toast.loading('Generating Despatch Sheet...', { id: 'despatch-sheet' });
+            const allOrders = await fetchAllOrders();
+            const riderGroups = {};
+            allOrders.filter(o => o.status !== 'cancelled').forEach(o => {
+                const rName = o.assignedRider?.name || 'Unassigned';
+                const rId = o.assignedRider?._id || 'unassigned';
+                if (!riderGroups[rId]) riderGroups[rId] = { name: rName, products: {}, orderCount: 0 };
+                riderGroups[rId].orderCount++;
+                o.products?.forEach(p => {
+                    const pName = p.product?.name || 'Unknown';
+                    const pUnit = p.product?.unit || '';
+                    const key = pName;
+                    if (!riderGroups[rId].products[key]) riderGroups[rId].products[key] = { name: pName, unit: pUnit, qty: 0 };
+                    riderGroups[rId].products[key].qty += p.quantity || 0;
+                });
+            });
+
+            // Grand totals
+            const grandTotals = {};
+            Object.values(riderGroups).forEach(g => {
+                Object.values(g.products).forEach(p => {
+                    if (!grandTotals[p.name]) grandTotals[p.name] = { name: p.name, unit: p.unit, qty: 0 };
+                    grandTotals[p.name].qty += p.qty;
+                });
+            });
+
+            let html = `<h1>📦 Despatch Sheet</h1><p class="meta">${format(new Date(selectedDate), "EEEE, dd MMMM yyyy")} • ${allOrders.length} orders • ${Object.keys(riderGroups).length} riders</p>`;
+
+            // Grand Total Summary
+            html += `<div class="rider-block"><div class="rider-header" style="background:#2c3e50"><span>GRAND TOTAL</span></div>
+                <table><thead><tr><th>Product</th><th class="text-center">Total Qty</th></tr></thead><tbody>`;
+            Object.values(grandTotals).forEach(p => {
+                html += `<tr><td><strong>${p.name}</strong></td><td class="text-center"><strong>${p.qty}</strong> ${p.unit}</td></tr>`;
+            });
+            html += `</tbody></table></div>`;
+
+            // Per rider
+            Object.values(riderGroups).forEach(group => {
+                html += `<div class="rider-block">
+                    <div class="rider-header"><span>${group.name}</span><span>${group.orderCount} orders</span></div>
+                    <table><thead><tr><th>Product</th><th class="text-center">Qty</th></tr></thead><tbody>`;
+                Object.values(group.products).forEach(p => {
+                    html += `<tr><td>${p.name}</td><td class="text-center"><strong>${p.qty}</strong> ${p.unit}</td></tr>`;
+                });
+                html += `</tbody></table></div>`;
+            });
+            openPrintWindow(`Despatch Sheet - ${selectedDate}`, html);
+            toast.success('Despatch Sheet ready!', { id: 'despatch-sheet' });
+        } catch (err) {
+            toast.error('Failed to generate Despatch Sheet', { id: 'despatch-sheet' });
+        }
+    };
+
     return (
         <div className="space-y-6">
             {/* ===== HEADER ===== */}
@@ -287,222 +489,128 @@ export const DeliveryDashboard = () => {
                 </div>
             </div>
 
-            {/* ===== TABS ===== */}
-            <div className="flex gap-1 bg-gray-100 rounded-xl p-1 w-fit">
-                {[
-                    { key: "overview", label: "Overview", icon: Eye },
-                    { key: "orders", label: "Orders", icon: Package },
-                    { key: "riders", label: "Riders", icon: Bike },
-                ].map(tab => (
-                    <button
-                        key={tab.key}
-                        onClick={() => setActiveTab(tab.key)}
-                        className={`flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium transition-all ${activeTab === tab.key
-                            ? "bg-white text-teal-700 shadow-sm"
-                            : "text-gray-500 hover:text-gray-700"
-                            }`}
-                    >
-                        <tab.icon size={16} />
-                        {tab.label}
-                    </button>
-                ))}
-            </div>
+            {/* ===== PRODUCT DELIVERIES + ACTION TILES ===== */}
+            {!dashLoading && (
+                <div className="flex flex-col lg:flex-row gap-4">
+                    {dash.productStats?.length > 0 && (
+                        <div className="bg-white rounded-xl border border-gray-100 shadow-sm overflow-hidden flex-1 min-w-0">
+                    <div className="bg-gradient-to-r from-orange-400 to-orange-500 px-4 py-2 flex justify-between items-center">
+                        <div className="flex items-center gap-2 text-white">
+                            <Package size={15} />
+                            <h2 className="text-sm font-bold tracking-tight uppercase">Product Deliveries</h2>
+                        </div>
+                        <span className="text-white/80 text-[10px] font-medium">{format(new Date(selectedDate), "dd MMM yyyy")}</span>
+                    </div>
+
+                    <table className="w-full text-left">
+                        <thead className="bg-gray-50/80 border-b border-gray-100">
+                            <tr>
+                                <th className="px-4 py-1.5 text-[10px] font-bold text-gray-400 uppercase tracking-wider">Product</th>
+                                <th className="px-3 py-1.5 text-[10px] font-bold text-gray-400 uppercase tracking-wider text-center">Scheduled</th>
+                                <th className="px-3 py-1.5 text-[10px] font-bold text-gray-400 uppercase tracking-wider text-center">Pending</th>
+                                <th className="px-3 py-1.5 text-[10px] font-bold text-gray-400 uppercase tracking-wider text-center">Delivered</th>
+                                <th className="px-3 py-1.5 text-[10px] font-bold text-gray-400 uppercase tracking-wider text-center">Cancelled</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            <tr className="bg-amber-50/40 border-b border-amber-100">
+                                <td className="px-4 py-2">
+                                    <div className="flex items-center gap-2">
+                                        <div className="w-6 h-6 rounded bg-amber-400 flex items-center justify-center text-white"><ClipboardList size={12} /></div>
+                                        <span className="font-bold text-gray-800 text-sm">All</span>
+                                    </div>
+                                </td>
+                                <td className="px-3 py-2 text-center"><span className="text-sm font-bold text-gray-800">{stats.total}</span></td>
+                                <td className="px-3 py-2 text-center"><span className="text-sm font-bold text-amber-600">{(stats.pending || 0) + (stats.confirmed || 0)}</span></td>
+                                <td className="px-3 py-2 text-center"><span className="text-sm font-bold text-emerald-600">{stats.delivered || 0}</span></td>
+                                <td className="px-3 py-2 text-center">
+                                    <span className={`inline-flex items-center justify-center w-6 h-6 rounded-full text-[10px] font-bold ${(stats.cancelled || 0) > 0 ? 'bg-red-100 text-red-600' : 'bg-emerald-100 text-emerald-600'}`}>{stats.cancelled || 0}</span>
+                                </td>
+                            </tr>
+                            <tr><td colSpan="5" className="px-4 py-1">
+                                <div className="flex items-center gap-2">
+                                    <div className="flex-1 bg-gray-100 rounded-full h-1 overflow-hidden"><div className="bg-teal-500 h-full transition-all duration-700" style={{ width: `${completionRate}%` }}></div></div>
+                                    <span className="text-[9px] font-bold text-gray-400">Completion {completionRate}%</span>
+                                </div>
+                            </td></tr>
+                            {dash.productStats.map((ps, idx) => {
+                                const pRate = ps.scheduled > 0 ? Math.round((ps.delivered / ps.scheduled) * 100) : 0;
+                                return (
+                                    <React.Fragment key={ps._id || idx}>
+                                        <tr className="border-t border-gray-50 hover:bg-gray-50/50">
+                                            <td className="px-4 py-1.5">
+                                                <div className="flex items-center gap-2">
+                                                    <div className="w-5 h-5 rounded bg-emerald-50 flex items-center justify-center text-emerald-500"><Package size={11} /></div>
+                                                    <span className="font-semibold text-gray-700 text-xs">{ps.product?.name}</span>
+                                                </div>
+                                            </td>
+                                            <td className="px-3 py-1.5 text-center"><span className="text-sm font-bold text-gray-700 cursor-pointer hover:underline" onClick={() => { setProductDrilldown({ productId: ps._id, productName: ps.product?.name, statusFilter: 'scheduled' }); setPaymentDrilldown(false); }}>{ps.scheduled}</span></td>
+                                            <td className="px-3 py-1.5 text-center"><span className="text-sm font-bold text-amber-500 cursor-pointer hover:underline" onClick={() => { setProductDrilldown({ productId: ps._id, productName: ps.product?.name, statusFilter: 'pending' }); setPaymentDrilldown(false); }}>{ps.pending}</span></td>
+                                            <td className="px-3 py-1.5 text-center"><span className="text-sm font-bold text-emerald-600 cursor-pointer hover:underline" onClick={() => { setProductDrilldown({ productId: ps._id, productName: ps.product?.name, statusFilter: 'delivered' }); setPaymentDrilldown(false); }}>{ps.delivered}</span></td>
+                                            <td className="px-3 py-1.5 text-center">
+                                                <span className={`inline-flex items-center justify-center w-5 h-5 rounded-full text-[9px] font-bold cursor-pointer hover:underline ${(ps.cancelled || 0) > 0 ? 'bg-red-50 text-red-400' : 'bg-emerald-50 text-emerald-400'}`} onClick={() => { setProductDrilldown({ productId: ps._id, productName: ps.product?.name, statusFilter: 'cancelled' }); setPaymentDrilldown(false); }}>{ps.cancelled || 0}</span>
+                                            </td>
+                                        </tr>
+                                        <tr><td colSpan="5" className="px-4 pb-1">
+                                            <div className="flex items-center gap-2">
+                                                <div className="flex-1 bg-gray-100 rounded-full h-[3px] overflow-hidden"><div className="bg-teal-500 h-full transition-all duration-700" style={{ width: `${pRate}%` }}></div></div>
+                                                <span className="text-[8px] font-bold text-gray-400">{pRate}%</span>
+                                            </div>
+                                        </td></tr>
+                                    </React.Fragment>
+                                );
+                            })}
+                        </tbody>
+                    </table>
+                        </div>
+                    )}
+
+                    {/* Right: Action Tiles */}
+                    <div className="grid grid-cols-2 gap-3 lg:w-[300px] flex-shrink-0 auto-rows-min">
+                        <button onClick={generateRouteSheet} className="flex flex-col items-center gap-2 bg-white border border-gray-200 rounded-xl px-3 py-4 hover:border-teal-300 hover:shadow-md transition-all group">
+                            <div className="w-10 h-10 rounded-lg bg-gradient-to-br from-teal-500 to-teal-600 flex items-center justify-center text-white shadow-sm">
+                                <Printer size={18} />
+                            </div>
+                            <div className="text-center">
+                                <p className="text-xs font-bold text-gray-800 group-hover:text-teal-700 transition-colors">Route Sheet</p>
+                                <p className="text-[9px] text-gray-400">Print routes</p>
+                            </div>
+                        </button>
+                        <button onClick={generateDespatchSheet} className="flex flex-col items-center gap-2 bg-white border border-gray-200 rounded-xl px-3 py-4 hover:border-indigo-300 hover:shadow-md transition-all group">
+                            <div className="w-10 h-10 rounded-lg bg-gradient-to-br from-indigo-500 to-indigo-600 flex items-center justify-center text-white shadow-sm">
+                                <FileSpreadsheet size={18} />
+                            </div>
+                            <div className="text-center">
+                                <p className="text-xs font-bold text-gray-800 group-hover:text-indigo-700 transition-colors">Despatch Sheet</p>
+                                <p className="text-[9px] text-gray-400">Download list</p>
+                            </div>
+                        </button>
+                        <div onClick={() => { setPaymentDrilldown(true); setProductDrilldown(null); setRiderFilter(""); setShowUnassigned(false); }} className="bg-white border border-gray-200 rounded-xl px-3 py-4 flex flex-col items-center justify-center text-center cursor-pointer hover:border-emerald-300 hover:shadow-md transition-all group">
+                            <div className="w-10 h-10 rounded-lg bg-gradient-to-br from-emerald-500 to-emerald-600 flex items-center justify-center text-white shadow-sm mb-2 group-hover:scale-105 transition-transform">
+                                <IndianRupee size={18} />
+                            </div>
+                            <p className="text-[9px] text-gray-400 font-medium group-hover:text-emerald-700 transition-colors">Payment Collected</p>
+                            <p className="text-lg font-bold text-gray-800">₹{(dash.totalPaymentCollected || 0).toLocaleString('en-IN')}</p>
+                        </div>
+                        <div className="bg-white border border-gray-200 rounded-xl px-3 py-4 flex flex-col items-center justify-center text-center">
+                            <div className="w-10 h-10 rounded-lg bg-gradient-to-br from-amber-500 to-orange-500 flex items-center justify-center text-white shadow-sm mb-2">
+                                <GlassWater size={18} />
+                            </div>
+                            <p className="text-[9px] text-gray-400 font-medium">Bottles Pending</p>
+                            <p className="text-lg font-bold text-gray-800">{dash.bottleStats?.pending || 0}</p>
+                            <p className="text-[9px] text-gray-400">{dash.bottleStats?.issued || 0}↑ / {dash.bottleStats?.returned || 0}↓</p>
+                        </div>
+                    </div>
+                </div>
+            )}
 
             {dashLoading ? (
                 <div className="flex items-center justify-center py-20">
                     <div className="loading loading-spinner loading-lg text-teal-600"></div>
                 </div>
             ) : (
-                <>
-                    {/* ===== OVERVIEW TAB ===== */}
-                    {activeTab === "overview" && (
-                        <div className="space-y-6">
-                            {/* Stats Grid */}
-                            <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3">
-                                <StatCard
-                                    icon={Package} label="Total Orders" value={stats.total || 0}
-                                    color="bg-gray-700"
-                                    onClick={() => { setActiveTab("orders"); setStatusFilter(""); }}
-                                />
-                                <StatCard
-                                    icon={Clock} label="Pending" value={stats.pending || 0}
-                                    sub={stats.confirmed ? `+${stats.confirmed} confirmed` : null}
-                                    color="bg-amber-500"
-                                    onClick={() => { setActiveTab("orders"); setStatusFilter("pending,confirmed"); }}
-                                />
-                                <StatCard
-                                    icon={Send} label="Out for Delivery" value={stats.out_for_delivery || 0}
-                                    color="bg-indigo-500"
-                                    onClick={() => { setActiveTab("orders"); setStatusFilter("out_for_delivery"); }}
-                                />
-                                <StatCard
-                                    icon={CheckCircle2} label="Delivered" value={stats.delivered || 0}
-                                    sub={`${completionRate}% completion`}
-                                    color="bg-emerald-500"
-                                    onClick={() => { setActiveTab("orders"); setStatusFilter("delivered"); }}
-                                />
-                                <StatCard
-                                    icon={XCircle} label="Cancelled" value={stats.cancelled || 0}
-                                    color="bg-red-500"
-                                    onClick={() => { setActiveTab("orders"); setStatusFilter("cancelled"); }}
-                                />
-                                <StatCard
-                                    icon={AlertTriangle} label="Unassigned" value={stats.unassigned || 0}
-                                    color="bg-orange-500"
-                                    onClick={() => { setActiveTab("orders"); setShowUnassigned(true); setStatusFilter(""); }}
-                                />
-                            </div>
-
-                            {/* Revenue + Completion */}
-                            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                                {/* Revenue Card */}
-                                <div className="bg-gradient-to-br from-teal-600 to-teal-700 rounded-xl p-6 text-white col-span-1">
-                                    <div className="flex items-center gap-2 mb-4">
-                                        <IndianRupee size={20} />
-                                        <span className="text-sm font-medium opacity-80">Revenue</span>
-                                    </div>
-                                    <p className="text-3xl font-bold">₹{(stats.deliveredRevenue || 0).toLocaleString()}</p>
-                                    <p className="text-xs opacity-70 mt-1">of ₹{(stats.revenue || 0).toLocaleString()} total value</p>
-
-                                    {/* Payment breakdown */}
-                                    {dash.paymentBreakdown?.length > 0 && (
-                                        <div className="mt-4 pt-3 border-t border-white/20 space-y-1">
-                                            {dash.paymentBreakdown?.map(pb => (
-                                                <div key={pb._id} className="flex justify-between text-xs">
-                                                    <span className="opacity-80">{pb._id || "Unknown"}</span>
-                                                    <span className="font-medium">₹{pb.total.toLocaleString()} ({pb.count})</span>
-                                                </div>
-                                            ))}
-                                        </div>
-                                    )}
-                                </div>
-
-                                {/* Completion Progress */}
-                                <div className="bg-white rounded-xl border border-gray-100 shadow-sm p-6 col-span-1">
-                                    <div className="flex items-center gap-2 mb-4">
-                                        <TrendingUp size={20} className="text-teal-600" />
-                                        <span className="text-sm font-bold text-gray-700">Completion Rate</span>
-                                    </div>
-                                    <div className="relative pt-1">
-                                        <div className="flex items-center justify-between mb-2">
-                                            <span className="text-4xl font-bold text-gray-900">{completionRate}%</span>
-                                            <span className="text-xs text-gray-400">{stats.delivered || 0} / {stats.total || 0}</span>
-                                        </div>
-                                        <div className="w-full bg-gray-100 rounded-full h-3">
-                                            <div
-                                                className="h-3 rounded-full transition-all duration-700 ease-out"
-                                                style={{
-                                                    width: `${completionRate}%`,
-                                                    background: completionRate >= 80 ? '#10b981' : completionRate >= 50 ? '#f59e0b' : '#ef4444'
-                                                }}
-                                            ></div>
-                                        </div>
-                                    </div>
-                                    {/* Status breakdown mini */}
-                                    <div className="grid grid-cols-2 gap-2 mt-4">
-                                        {[
-                                            { label: "Pending", val: stats.pending, c: "text-amber-600" },
-                                            { label: "Confirmed", val: stats.confirmed, c: "text-blue-600" },
-                                            { label: "In Transit", val: stats.out_for_delivery, c: "text-indigo-600" },
-                                            { label: "Cancelled", val: stats.cancelled, c: "text-red-600" },
-                                        ].map(s => (
-                                            <div key={s.label} className="text-center">
-                                                <p className={`text-lg font-bold ${s.c}`}>{s.val || 0}</p>
-                                                <p className="text-[10px] text-gray-400">{s.label}</p>
-                                            </div>
-                                        ))}
-                                    </div>
-                                </div>
-
-                                {/* Area Breakdown */}
-                                <div className="bg-white rounded-xl border border-gray-100 shadow-sm p-6 col-span-1">
-                                    <div className="flex items-center gap-2 mb-4">
-                                        <MapPin size={20} className="text-teal-600" />
-                                        <span className="text-sm font-bold text-gray-700">Area Breakdown</span>
-                                    </div>
-                                    {dash.areaStats?.length > 0 ? (
-                                        <div className="space-y-2 max-h-48 overflow-y-auto">
-                                            {dash.areaStats.map((a, i) => (
-                                                <div key={i} className="flex items-center justify-between py-1">
-                                                    <div className="min-w-0">
-                                                        <p className="text-sm font-medium text-gray-800 truncate">{a.area?.name || "Unknown"}</p>
-                                                        <p className="text-[10px] text-gray-400">{a.area?.city?.name || ""}</p>
-                                                    </div>
-                                                    <div className="text-right flex-shrink-0 ml-2">
-                                                        <p className="text-sm font-bold text-gray-700">{a.total}</p>
-                                                        <p className="text-[10px] text-emerald-500">{a.delivered} done</p>
-                                                    </div>
-                                                </div>
-                                            ))}
-                                        </div>
-                                    ) : (
-                                        <p className="text-sm text-gray-400 text-center py-6">No area data</p>
-                                    )}
-                                </div>
-                            </div>
-
-                            {/* Rider Performance Table */}
-                            {dash.riderStats?.length > 0 && (
-                                <div className="bg-white rounded-xl border border-gray-100 shadow-sm overflow-hidden">
-                                    <div className="px-6 py-4 border-b border-gray-100">
-                                        <h3 className="font-bold text-gray-800 flex items-center gap-2">
-                                            <Users size={18} className="text-teal-600" />
-                                            Rider Performance
-                                        </h3>
-                                    </div>
-                                    <div className="overflow-x-auto">
-                                        <table className="w-full">
-                                            <thead className="bg-gray-50/50">
-                                                <tr>
-                                                    <th className="px-4 py-3 text-left text-xs font-semibold text-gray-500 uppercase">Rider</th>
-                                                    <th className="px-4 py-3 text-center text-xs font-semibold text-gray-500 uppercase">Total</th>
-                                                    <th className="px-4 py-3 text-center text-xs font-semibold text-gray-500 uppercase">Delivered</th>
-                                                    <th className="px-4 py-3 text-center text-xs font-semibold text-gray-500 uppercase">In Transit</th>
-                                                    <th className="px-4 py-3 text-center text-xs font-semibold text-gray-500 uppercase">Pending</th>
-                                                    <th className="px-4 py-3 text-center text-xs font-semibold text-gray-500 uppercase">Rate</th>
-                                                    <th className="px-4 py-3 text-right text-xs font-semibold text-gray-500 uppercase">Cash</th>
-                                                </tr>
-                                            </thead>
-                                            <tbody className="divide-y divide-gray-50">
-                                                {dash.riderStats.map((rs) => {
-                                                    const rate = rs.total > 0 ? Math.round((rs.delivered / rs.total) * 100) : 0;
-                                                    return (
-                                                        <tr key={rs._id} className="hover:bg-gray-50/50 transition-colors">
-                                                            <td className="px-4 py-3">
-                                                                <div className="flex items-center gap-2">
-                                                                    <div className="w-8 h-8 rounded-full bg-teal-100 text-teal-600 flex items-center justify-center text-xs font-bold">
-                                                                        {rs.rider?.name?.charAt(0) || "?"}
-                                                                    </div>
-                                                                    <div>
-                                                                        <p className="text-sm font-medium text-gray-800">{rs.rider?.name}</p>
-                                                                        <p className="text-[10px] text-gray-400">{rs.rider?.hub?.name || ""}</p>
-                                                                    </div>
-                                                                </div>
-                                                            </td>
-                                                            <td className="px-4 py-3 text-center text-sm font-bold text-gray-700">{rs.total}</td>
-                                                            <td className="px-4 py-3 text-center text-sm font-bold text-emerald-600">{rs.delivered}</td>
-                                                            <td className="px-4 py-3 text-center text-sm text-indigo-600">{rs.out}</td>
-                                                            <td className="px-4 py-3 text-center text-sm text-amber-600">{rs.pending}</td>
-                                                            <td className="px-4 py-3 text-center">
-                                                                <span className={`text-xs font-bold px-2 py-0.5 rounded-full ${rate >= 80 ? 'bg-emerald-50 text-emerald-700' : rate >= 50 ? 'bg-amber-50 text-amber-700' : 'bg-red-50 text-red-700'}`}>
-                                                                    {rate}%
-                                                                </span>
-                                                            </td>
-                                                            <td className="px-4 py-3 text-right text-sm font-medium text-gray-700">₹{(rs.cashCollected || 0).toLocaleString()}</td>
-                                                        </tr>
-                                                    );
-                                                })}
-                                            </tbody>
-                                        </table>
-                                    </div>
-                                </div>
-                            )}
-                        </div>
-                    )}
-
-                    {/* ===== ROUTES & DELIVERIES SPLIT TAB ===== */}
-                    {activeTab === "orders" && (
-                        <div className="flex flex-col lg:flex-row gap-6">
+                <div className="space-y-6">
+                    <div className="flex flex-col lg:flex-row gap-6">
                             
                             {/* --- LEFT PANE: Active Routes & Drivers --- */}
                             <div className="lg:w-[380px] flex-shrink-0 space-y-4">
@@ -532,7 +640,7 @@ export const DeliveryDashboard = () => {
                                                     return (
                                                         <div 
                                                             key={rs._id} 
-                                                            onClick={() => { setRiderFilter(rs.rider?._id); setShowUnassigned(false); }}
+                                                            onClick={() => { setRiderFilter(rs.rider?._id); setShowUnassigned(false); setProductDrilldown(null); setPaymentDrilldown(false); }}
                                                             className={`rounded-2xl border bg-white p-5 cursor-pointer relative shadow-sm transition-all duration-200 
                                                                 ${isSelected ? 'border-r-4 border-r-teal-500 border-t-transparent border-l-transparent border-b-transparent shadow-md' : 'border-gray-200 hover:border-teal-200'}`}
                                                         >
@@ -599,16 +707,164 @@ export const DeliveryDashboard = () => {
                                         </div>
                                     ))}
                                 </div>
+
+                                {/* Unassigned Orders Card */}
+                                {(stats.unassigned || 0) > 0 && (
+                                    <div
+                                        onClick={() => { setShowUnassigned(true); setRiderFilter(""); setProductDrilldown(null); setPaymentDrilldown(false); }}
+                                        className={`rounded-2xl border p-5 cursor-pointer relative shadow-sm transition-all duration-200 
+                                            ${showUnassigned && !riderFilter ? 'border-r-4 border-r-orange-500 border-t-transparent border-l-transparent border-b-transparent shadow-md bg-orange-50' : 'bg-white border-gray-200 hover:border-orange-200'}`}
+                                    >
+                                        <div className="flex items-center gap-4">
+                                            <div className="w-[50px] h-[50px] rounded-full bg-gradient-to-br from-orange-400 to-red-500 text-white flex items-center justify-center font-bold text-xl shadow-inner">
+                                                <AlertTriangle size={24} />
+                                            </div>
+                                            <div>
+                                                <div className="flex items-center gap-2 mb-1">
+                                                    <h4 className="font-bold text-orange-700 text-lg leading-tight">Unassigned</h4>
+                                                    <span className="text-[10px] px-2.5 py-0.5 rounded-full font-bold shadow-sm bg-red-500 text-white">
+                                                        Action Needed
+                                                    </span>
+                                                </div>
+                                                <p className="text-sm text-gray-500">Orders without a rider</p>
+                                            </div>
+                                        </div>
+                                        <div className="mt-4 pt-3 border-t border-orange-100 flex justify-center">
+                                            <div className="text-center">
+                                                <p className="text-[9px] text-gray-500 font-bold uppercase">Orders</p>
+                                                <p className="font-bold text-orange-600 text-2xl leading-none mt-1">{stats.unassigned}</p>
+                                            </div>
+                                        </div>
+                                    </div>
+                                )}
                             </div>
 
                             {/* --- RIGHT PANE: Delivery List --- */}
                             <div className="flex-1 bg-[#fcf9f5] rounded-tl-xl rounded-bl-xl border-l-[3px] border-[#2980b9] shadow-sm flex flex-col min-h-[600px] overflow-hidden">
-                                {riderFilter ? (
+                                {productDrilldown ? (
                                     <div className="flex flex-col h-full bg-[#eeebeb]">
-                                        <div className="bg-[#177a66] text-white p-4 flex justify-between items-center rounded-tr-xl">
+                                        <div className="bg-[#2c3e50] text-white p-4 flex justify-between items-center rounded-tr-xl">
                                             <h2 className="text-lg font-extrabold uppercase tracking-wide flex items-center gap-2">
-                                                DELIVERIES FOR {dash.riderStats?.find(r => r.rider?._id === riderFilter)?.rider?.name || 'Rider'} 
-                                                <ExternalLink size={16} className="text-white/80 cursor-pointer"/>
+                                                <Package size={20} />
+                                                {productDrilldown.productName}
+                                                <span className="text-sm font-normal opacity-70 capitalize">• {productDrilldown.statusFilter === 'scheduled' ? 'All' : productDrilldown.statusFilter}</span>
+                                            </h2>
+                                            <button onClick={() => setProductDrilldown(null)} className="bg-white/10 text-white p-2 rounded-lg hover:bg-white/20 transition-colors">
+                                                <XCircle size={16}/>
+                                            </button>
+                                        </div>
+                                        <div className="flex-1 overflow-y-auto">
+                                            {drilldownCustomers.length > 0 ? (
+                                                <table className="w-full text-left">
+                                                    <thead className="bg-gray-50 sticky top-0">
+                                                        <tr>
+                                                            <th className="px-4 py-2.5 text-[10px] font-bold text-gray-400 uppercase tracking-wider">#</th>
+                                                            <th className="px-4 py-2.5 text-[10px] font-bold text-gray-400 uppercase tracking-wider">Customer</th>
+                                                            <th className="px-4 py-2.5 text-[10px] font-bold text-gray-400 uppercase tracking-wider">Address</th>
+                                                            <th className="px-4 py-2.5 text-[10px] font-bold text-gray-400 uppercase tracking-wider text-center">Qty</th>
+                                                            <th className="px-4 py-2.5 text-[10px] font-bold text-gray-400 uppercase tracking-wider text-center">Status</th>
+                                                        </tr>
+                                                    </thead>
+                                                    <tbody className="divide-y divide-gray-50">
+                                                        {drilldownCustomers.map((c, i) => (
+                                                            <tr key={i} className="hover:bg-gray-50/50">
+                                                                <td className="px-4 py-2.5 text-xs text-gray-400 font-medium">{i + 1}</td>
+                                                                <td className="px-4 py-2.5">
+                                                                    <a href={`/administrator/dashboard/customers/${c.customerId}`} target="_blank" rel="noopener noreferrer" className="text-sm font-semibold text-teal-700 hover:underline">{c.customer}</a>
+                                                                    {c.phone && <p className="text-[10px] text-gray-400 mt-0.5">{c.phone}</p>}
+                                                                </td>
+                                                                <td className="px-4 py-2.5">
+                                                                    <p className="text-xs text-gray-600 max-w-[200px] truncate">{c.address || c.area || '—'}</p>
+                                                                </td>
+                                                                <td className="px-4 py-2.5 text-center">
+                                                                    <span className="text-sm font-bold text-gray-800">{c.qty}</span>
+                                                                </td>
+                                                                <td className="px-4 py-2.5 text-center">
+                                                                    <StatusBadge status={c.status} />
+                                                                </td>
+                                                            </tr>
+                                                        ))}
+                                                    </tbody>
+                                                    <tfoot className="bg-gray-50 border-t border-gray-100">
+                                                        <tr>
+                                                            <td colSpan="3" className="px-4 py-2.5 text-xs font-bold text-gray-500">Total</td>
+                                                            <td className="px-4 py-2.5 text-center text-sm font-bold text-teal-700">{drilldownCustomers.reduce((s, c) => s + c.qty, 0)}</td>
+                                                            <td></td>
+                                                        </tr>
+                                                    </tfoot>
+                                                </table>
+                                            ) : (
+                                                <div className="flex flex-col items-center justify-center py-12 text-gray-400">
+                                                    <Package size={40} className="mb-3 text-gray-300" />
+                                                    <p className="text-sm font-medium">No matching orders found</p>
+                                                </div>
+                                            )}
+                                        </div>
+                                    </div>
+                                ) : paymentDrilldown ? (
+                                    <div className="bg-white rounded-xl shadow-sm border border-emerald-100 overflow-hidden flex flex-col h-[calc(100vh-200px)]">
+                                        <div className="bg-gradient-to-r from-emerald-500 to-emerald-600 px-5 py-3 flex items-center justify-between shadow-sm relative z-10">
+                                            <div className="flex items-center gap-3 text-white">
+                                                <div className="p-1.5 bg-white/20 rounded-lg"><IndianRupee size={16} /></div>
+                                                <div>
+                                                    <h2 className="text-sm font-bold tracking-tight">Cash Payments Collected</h2>
+                                                    <p className="text-[10px] text-emerald-100 font-medium">{paymentCustomers.length} Customers</p>
+                                                </div>
+                                            </div>
+                                            <button onClick={() => setPaymentDrilldown(false)} className="w-8 h-8 rounded-full bg-white/10 hover:bg-white/20 flex items-center justify-center text-white transition-colors"><XCircle size={16} /></button>
+                                        </div>
+                                        <div className="overflow-y-auto flex-1 p-0">
+                                            {paymentCustomers.length === 0 ? (
+                                                <div className="flex flex-col items-center justify-center h-full text-gray-400 py-12">
+                                                    <IndianRupee size={32} className="opacity-20 mb-3" />
+                                                    <p className="text-sm">No cash payments collected.</p>
+                                                </div>
+                                            ) : (
+                                                <table className="w-full text-left">
+                                                    <thead className="bg-emerald-50/50 border-b border-emerald-100 sticky top-0 backdrop-blur-sm">
+                                                        <tr>
+                                                            <th className="px-4 py-2 text-[10px] font-bold text-emerald-600 uppercase tracking-wider">#</th>
+                                                            <th className="px-4 py-2 text-[10px] font-bold text-emerald-600 uppercase tracking-wider">Customer</th>
+                                                            <th className="px-4 py-2 text-[10px] font-bold text-emerald-600 uppercase tracking-wider">Rider</th>
+                                                            <th className="px-4 py-2 text-[10px] font-bold text-emerald-600 uppercase tracking-wider text-right">Amount</th>
+                                                        </tr>
+                                                    </thead>
+                                                    <tbody className="divide-y divide-gray-50">
+                                                        {paymentCustomers.map((c, i) => (
+                                                            <tr key={i} className="hover:bg-emerald-50/30 transition-colors">
+                                                                <td className="px-4 py-2.5 text-xs text-gray-400 font-medium">{i + 1}</td>
+                                                                <td className="px-4 py-2.5">
+                                                                    <a href={`/administrator/dashboard/customers/${c.customerId}`} target="_blank" rel="noopener noreferrer" className="text-sm font-semibold text-teal-700 hover:underline">{c.customer}</a>
+                                                                    {c.phone && <p className="text-[10px] text-gray-400 mt-0.5">{c.phone}</p>}
+                                                                </td>
+                                                                <td className="px-4 py-2.5">
+                                                                    <span className="inline-flex items-center px-2 py-0.5 rounded text-[10px] font-medium bg-gray-100 text-gray-600">{c.rider}</span>
+                                                                </td>
+                                                                <td className="px-4 py-2.5 text-right font-bold text-emerald-600 text-sm">
+                                                                    ₹{c.amount}
+                                                                </td>
+                                                            </tr>
+                                                        ))}
+                                                    </tbody>
+                                                </table>
+                                            )}
+                                        </div>
+                                    </div>
+                                ) : (riderFilter || showUnassigned) ? (
+                                    <div className="flex flex-col h-full bg-[#eeebeb]">
+                                        <div className={`${showUnassigned && !riderFilter ? 'bg-orange-600' : 'bg-[#177a66]'} text-white p-4 flex justify-between items-center rounded-tr-xl`}>
+                                            <h2 className="text-lg font-extrabold uppercase tracking-wide flex items-center gap-2">
+                                                {showUnassigned && !riderFilter ? (
+                                                    <>
+                                                        <AlertTriangle size={20} />
+                                                        UNASSIGNED ORDERS ({orders.length})
+                                                    </>
+                                                ) : (
+                                                    <>
+                                                        DELIVERIES FOR {dash.riderStats?.find(r => r.rider?._id === riderFilter)?.rider?.name || 'Rider'}
+                                                        <ExternalLink size={16} className="text-white/80 cursor-pointer"/>
+                                                    </>
+                                                )}
                                             </h2>
                                             <button className="bg-[#243447] text-white p-2 rounded-lg hover:bg-opacity-80 transition-colors shadow-sm">
                                                 <FileText size={16}/>
@@ -704,12 +960,86 @@ export const DeliveryDashboard = () => {
                                             ) : ordersSubTab === "deliveries" ? (
                                                 /* --- ORIGINAL DELIVERIES VIEW --- */
                                                 <div className="space-y-4">
+                                                    {selectedOrders.length > 0 && (
+                                                        <div className="sticky top-0 z-20 bg-teal-50 border border-teal-100 rounded-xl p-4 shadow-sm animate-in slide-in-from-top-2 duration-300 flex flex-col md:flex-row items-center justify-between gap-4">
+                                                            <div className="flex items-center gap-3">
+                                                                <div className="bg-teal-600 text-white w-8 h-8 rounded-full flex items-center justify-center font-black text-sm shadow-sm">
+                                                                    {selectedOrders.length}
+                                                                </div>
+                                                                <div>
+                                                                    <p className="text-sm font-black text-teal-800 uppercase tracking-tight">Orders Selected</p>
+                                                                    <button 
+                                                                        onClick={() => setSelectedOrders([])}
+                                                                        className="text-[10px] font-bold text-teal-600 hover:text-teal-800 underline uppercase tracking-widest"
+                                                                    >
+                                                                        Clear Selection
+                                                                    </button>
+                                                                </div>
+                                                            </div>
+                                                            
+                                                            <div className="flex flex-col gap-4 w-full md:w-auto">
+                                                                <div className="flex bg-white rounded-lg p-1 border border-teal-200 shadow-sm self-start">
+                                                                    {[
+                                                                        { id: 'today', label: 'Today Only' },
+                                                                        { id: 'temporary', label: 'Temporary' },
+                                                                        { id: 'permanent', label: 'Permanent' }
+                                                                    ].map(t => (
+                                                                        <button
+                                                                            key={t.id}
+                                                                            onClick={() => setAssignmentType(t.id)}
+                                                                            className={`px-3 py-1.5 text-[10px] font-black uppercase rounded-md transition-all whitespace-nowrap ${assignmentType === t.id ? 'bg-teal-600 text-white shadow-sm' : 'text-teal-600 hover:bg-teal-50'}`}
+                                                                        >
+                                                                            {t.label}
+                                                                        </button>
+                                                                    ))}
+                                                                </div>
+
+                                                                <div className="flex items-center gap-2">
+                                                                    {assignmentType === 'temporary' && (
+                                                                        <div className="flex items-center gap-2 animate-in slide-in-from-left-2 duration-300">
+                                                                            <span className="text-[10px] font-black text-teal-600 uppercase tracking-widest">Until:</span>
+                                                                            <input 
+                                                                                type="date" 
+                                                                                value={endDate}
+                                                                                onChange={(e) => setEndDate(e.target.value)}
+                                                                                className="input input-bordered input-xs font-bold w-32 bg-white"
+                                                                            />
+                                                                        </div>
+                                                                    )}
+                                                                    <div className="relative flex-1 md:flex-none">
+                                                                        <Users className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" size={14} />
+                                                                        <select 
+                                                                            value={assignRiderId}
+                                                                            onChange={(e) => setAssignRiderId(e.target.value)}
+                                                                            className="select select-bordered select-sm pl-9 text-xs font-bold w-full md:w-56 bg-white"
+                                                                        >
+                                                                            <option value="">Select Rider to Assign</option>
+                                                                            {riders.map(r => (
+                                                                                <option key={r._id} value={r._id}>{r.name} ({r.hub?.name || 'No Hub'})</option>
+                                                                            ))}
+                                                                        </select>
+                                                                    </div>
+                                                                    <button 
+                                                                        onClick={() => assignMutation.mutate({ orderIds: selectedOrders, riderId: assignRiderId })}
+                                                                        disabled={!assignRiderId || assignMutation.isPending || (assignmentType === 'temporary' && !endDate)}
+                                                                        className="btn btn-sm btn-primary gap-2 shadow-md px-6"
+                                                                    >
+                                                                        {assignMutation.isPending ? <RefreshCw size={14} className="animate-spin"/> : <UserPlus size={14}/>}
+                                                                        Assign
+                                                                    </button>
+                                                                </div>
+                                                            </div>
+                                                        </div>
+                                                    )}
                                                     {orders.map(order => (
                                                         <div key={order._id} className="bg-white rounded-xl border border-gray-200 shadow-sm overflow-hidden pb-4">
                                                             <div className="px-5 py-4 flex gap-4">
                                                                 <div className="pt-0.5">
-                                                                    <div className="w-[22px] h-[22px] border-2 border-gray-400 rounded-sm cursor-pointer flex items-center justify-center hover:border-teal-500">
-                                                                        {selectedOrders.includes(order._id) && <div className="w-[14px] h-[14px] bg-teal-500"></div>}
+                                                                    <div 
+                                                                        onClick={() => toggleOrder(order._id)}
+                                                                        className={`w-[22px] h-[22px] border-2 rounded-sm cursor-pointer flex items-center justify-center transition-colors ${selectedOrders.includes(order._id) ? 'border-teal-500 bg-teal-50' : 'border-gray-400 hover:border-teal-500'}`}
+                                                                    >
+                                                                        {selectedOrders.includes(order._id) && <div className="w-[14px] h-[14px] bg-teal-500 rounded-[1px]"></div>}
                                                                     </div>
                                                                 </div>
                                                                 <div className="flex-1 min-w-0">
@@ -718,14 +1048,32 @@ export const DeliveryDashboard = () => {
                                                                             <h3 className="text-[17px] font-bold text-gray-900 inline-flex items-center gap-2">
                                                                                 {order.customer?.name || "Unknown Customer"}
                                                                                 <span className="bg-[#24bcd3] text-white text-[10px] px-2 py-[2px] rounded-full font-bold">{order.customer?.routeId || order._id.slice(-3)}</span>
+                                                                                <span className={`text-[9px] px-2 py-0.5 rounded-full font-bold uppercase ${
+                                                                                    order.orderType === 'ONE_TIME' ? 'bg-purple-100 text-purple-700' : 
+                                                                                    order.orderType === 'SPOT_SALE' ? 'bg-amber-100 text-amber-700' : 
+                                                                                    'bg-teal-100 text-teal-700'
+                                                                                }`}>
+                                                                                    {order.orderType === 'DELIVERY' ? 'Subscription' : order.orderType?.replace('_', ' ')}
+                                                                                </span>
                                                                             </h3>
                                                                             <p className="text-[13px] text-[#697f8c] mt-0.5 tracking-tight truncate max-w-[300px]">
                                                                                 {order.customer?.address?.fullAddress || "No detailed address provided"}
                                                                             </p>
                                                                         </div>
                                                                         <div className="flex items-center gap-3 text-gray-600">
-                                                                            <span className="text-[13px]">Mobile: <Eye size={18} className="inline ml-1 hover:text-teal-600 cursor-pointer"/></span>
-                                                                            <Edit3 size={18} className="text-[#3c4b57] hover:text-teal-600 cursor-pointer"/>
+                                                                            <span className="text-[13px]">
+                                                                        Mobile: {visiblePhoneIds.includes(order._id) ? order.customer?.mobile : "********" + (order.customer?.mobile?.slice(-2) || "")}
+                                                                        <Eye 
+                                                                            size={18} 
+                                                                            onClick={() => togglePhoneVisibility(order._id)}
+                                                                            className={`inline ml-1 cursor-pointer transition-colors ${visiblePhoneIds.includes(order._id) ? 'text-teal-600' : 'text-gray-400 hover:text-teal-600'}`}
+                                                                        />
+                                                                    </span>
+                                                                            <Edit3 
+                                                                                size={18} 
+                                                                                onClick={() => setEditOrder(order)}
+                                                                                className="text-[#3c4b57] hover:text-teal-600 cursor-pointer"
+                                                                            />
                                                                         </div>
                                                                     </div>
 
@@ -746,22 +1094,38 @@ export const DeliveryDashboard = () => {
                                                                                                     <span className="text-gray-800">→</span>
                                                                                                     <span>{p.quantity} {p.product?.unit}</span>
                                                                                                 </div>
-                                                                                                <span className="bg-[#b3b9bd] text-white text-[9px] px-2.5 py-[3px] rounded-full font-bold uppercase shadow-sm tracking-wider">Daily</span>
+                                                                                                <span className={`text-[9px] px-2.5 py-[3px] rounded-full font-bold uppercase shadow-sm tracking-wider ${
+                                                                                                    order.orderType === 'ONE_TIME' ? 'bg-purple-500 text-white' : 
+                                                                                                    order.orderType === 'SPOT_SALE' ? 'bg-amber-500 text-white' : 
+                                                                                                    'bg-[#1cc098] text-white'
+                                                                                                }`}>
+                                                                                                    {order.orderType === 'DELIVERY' ? 'Daily' : order.orderType?.split('_')[0]}
+                                                                                                </span>
                                                                                             </div>
                                                                                         </div>
                                                                                     </div>
                                                                                     
-                                                                                    <div className="flex items-center gap-6">
                                                                                         <span className={`${order.status === 'delivered' ? 'bg-[#cbf4db] text-[#1e7647]' : 'bg-gray-200 text-gray-600'} px-3 py-1.5 rounded-full text-[10px] font-bold uppercase tracking-wider shadow-sm`}>
                                                                                             {order.status}
                                                                                         </span>
                                                                                         
-                                                                                        {order.status !== 'delivered' && (
-                                                                                            <div className="text-right">
-                                                                                                <p className="text-[13px] text-gray-500">Bottles:</p>
-                                                                                                <p className="font-bold text-gray-900 text-sm">{order.bottlesIssued || 0}</p>
-                                                                                            </div>
-                                                                                        )}
+                                                                                        <div className="flex flex-col items-end gap-1">
+                                                                                            {order.status === 'delivered' ? (
+                                                                                                <div className="text-right">
+                                                                                                    <p className="text-[13px] text-gray-500">Collected:</p>
+                                                                                                    <div className="flex items-center gap-2 font-bold text-[13px]">
+                                                                                                        <span className="text-emerald-600">₹{order.cashCollected || 0}</span>
+                                                                                                        <span className="text-gray-300">|</span>
+                                                                                                        <span className="text-blue-600">{order.bottlesReturned || 0} Bot.</span>
+                                                                                                    </div>
+                                                                                                </div>
+                                                                                            ) : (
+                                                                                                <div className="text-right">
+                                                                                                    <p className="text-[13px] text-gray-500">Bottles to Collect:</p>
+                                                                                                    <p className="font-bold text-gray-900 text-sm">{order.bottlesIssued || 0}</p>
+                                                                                                </div>
+                                                                                            )}
+                                                                                        </div>
                                                                                         
                                                                                         <div className="flex items-center gap-1.5 text-[#1cc098] font-bold text-xs whitespace-nowrap">
                                                                                             <Clock size={14}/> {format(new Date(order.createdAt), "hh:mm a")}
@@ -795,95 +1159,261 @@ export const DeliveryDashboard = () => {
                                     </div>
                                 )}
                             </div>
-                        </div>
-                    )}
-
-                    {/* ===== RIDERS TAB ===== */}
-                    {activeTab === "riders" && (
-                        <div className="space-y-4">
-                            {dash.riderStats?.length > 0 ? (
-                                <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
-                                    {(dash.riderStats || []).map(rs => {
-                                        const rate = rs.total > 0 ? Math.round((rs.delivered / rs.total) * 100) : 0;
-                                        return (
-                                            <div key={rs._id} className="bg-white rounded-xl border border-gray-100 shadow-sm p-5 hover:shadow-md transition-all">
-                                                <div className="flex items-center gap-3 mb-4">
-                                                    <div className="w-12 h-12 rounded-full bg-gradient-to-br from-teal-400 to-teal-600 text-white flex items-center justify-center text-lg font-bold">
-                                                        {rs.rider?.name?.charAt(0) || "?"}
-                                                    </div>
-                                                    <div>
-                                                        <p className="font-bold text-gray-800">{rs.rider?.name}</p>
-                                                        <p className="text-xs text-gray-400">{rs.rider?.hub?.name || "No hub"}</p>
-                                                    </div>
-                                                    <div className="ml-auto">
-                                                        <span className={`text-sm font-bold px-3 py-1 rounded-full ${rate >= 80 ? 'bg-emerald-50 text-emerald-700' : rate >= 50 ? 'bg-amber-50 text-amber-700' : 'bg-red-50 text-red-700'}`}>
-                                                            {rate}%
-                                                        </span>
-                                                    </div>
-                                                </div>
-
-                                                {/* Progress bar */}
-                                                <div className="w-full bg-gray-100 rounded-full h-2 mb-4">
-                                                    <div
-                                                        className="h-2 rounded-full transition-all duration-500"
-                                                        style={{
-                                                            width: `${rate}%`,
-                                                            background: rate >= 80 ? '#10b981' : rate >= 50 ? '#f59e0b' : '#ef4444'
-                                                        }}
-                                                    ></div>
-                                                </div>
-
-                                                <div className="grid grid-cols-4 gap-2 text-center">
-                                                    <button 
-                                                        onClick={() => { setActiveTab("orders"); setRiderFilter(rs.rider?._id); setStatusFilter(""); setShowUnassigned(false); }}
-                                                        className="hover:bg-gray-50 rounded py-1 transition-colors cursor-pointer"
-                                                    >
-                                                        <p className="text-lg font-bold text-gray-800">{rs.total}</p>
-                                                        <p className="text-[10px] text-gray-400">Total</p>
-                                                    </button>
-                                                    <button 
-                                                        onClick={() => { setActiveTab("orders"); setRiderFilter(rs.rider?._id); setStatusFilter("delivered"); setShowUnassigned(false); }}
-                                                        className="hover:bg-gray-50 rounded py-1 transition-colors cursor-pointer"
-                                                    >
-                                                        <p className="text-lg font-bold text-emerald-600">{rs.delivered}</p>
-                                                        <p className="text-[10px] text-gray-400">Done</p>
-                                                    </button>
-                                                    <button 
-                                                        onClick={() => { setActiveTab("orders"); setRiderFilter(rs.rider?._id); setStatusFilter("out_for_delivery"); setShowUnassigned(false); }}
-                                                        className="hover:bg-gray-50 rounded py-1 transition-colors cursor-pointer"
-                                                    >
-                                                        <p className="text-lg font-bold text-indigo-600">{rs.out}</p>
-                                                        <p className="text-[10px] text-gray-400">Transit</p>
-                                                    </button>
-                                                    <button 
-                                                        onClick={() => { setActiveTab("orders"); setRiderFilter(rs.rider?._id); setStatusFilter("pending,confirmed"); setShowUnassigned(false); }}
-                                                        className="hover:bg-gray-50 rounded py-1 transition-colors cursor-pointer"
-                                                    >
-                                                        <p className="text-lg font-bold text-amber-600">{rs.pending}</p>
-                                                        <p className="text-[10px] text-gray-400">Pending</p>
-                                                    </button>
-                                                </div>
-
-                                                {rs.cashCollected > 0 && (
-                                                    <div className="mt-3 pt-3 border-t border-gray-100 flex justify-between text-sm">
-                                                        <span className="text-gray-500">Cash Collected</span>
-                                                        <span className="font-bold text-gray-800">₹{rs.cashCollected.toLocaleString()}</span>
-                                                    </div>
-                                                )}
-                                            </div>
-                                        );
-                                    })}
-                                </div>
-                            ) : (
-                                <div className="bg-white rounded-xl border border-gray-100 shadow-sm p-12 text-center">
-                                    <Bike size={48} className="text-gray-200 mx-auto mb-3" />
-                                    <p className="text-gray-500">No rider activity for this date</p>
-                                </div>
-                            )}
-                        </div>
-                    )}
-                </>
+                    </div>
+                </div>
             )}
+
+
+            {/* --- PAYMENTS DRILLDOWN --- */}
+            {paymentDrilldown && (
+                <div className="fixed inset-0 z-[60] flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm animate-in fade-in duration-300">
+                    <div className="bg-white rounded-2xl w-full max-w-2xl max-h-[80vh] shadow-2xl flex flex-col overflow-hidden animate-in zoom-in-95 duration-300">
+                        <div className="bg-teal-800 p-5 flex items-center justify-between text-white">
+                            <div>
+                                <h3 className="text-lg font-black uppercase tracking-tight">Cash Payments Collected</h3>
+                                <p className="text-xs text-teal-200 font-bold tracking-widest">{format(new Date(selectedDate), "dd MMMM, yyyy")}</p>
+                            </div>
+                            <button onClick={() => setPaymentDrilldown(false)} className="w-8 h-8 rounded-full bg-white/10 flex items-center justify-center hover:bg-white/20 transition-all">
+                                <ChevronDown size={20} />
+                            </button>
+                        </div>
+                        
+                        <div className="flex-1 overflow-y-auto p-6">
+                            <div className="space-y-3">
+                                {paymentCustomers.length > 0 ? paymentCustomers.map((p, idx) => (
+                                    <div key={idx} className="flex items-center justify-between p-4 bg-gray-50 rounded-xl border border-gray-100 group hover:border-teal-200 hover:bg-white transition-all shadow-sm hover:shadow-md">
+                                        <div className="flex items-center gap-4">
+                                            <div className="w-10 h-10 rounded-full bg-teal-100 flex items-center justify-center text-teal-700 font-black text-sm">
+                                                {p.customerName[0]}
+                                            </div>
+                                            <div>
+                                                <p className="font-black text-gray-900 group-hover:text-teal-600 transition-colors uppercase text-sm tracking-tight">{p.customerName}</p>
+                                                <p className="text-[10px] font-bold text-gray-500 uppercase tracking-widest flex items-center gap-1.5">
+                                                    <Bike size={10} /> {p.riderName}
+                                                </p>
+                                            </div>
+                                        </div>
+                                        <div className="text-right">
+                                            <p className="text-lg font-black text-gray-900">₹{p.amount}</p>
+                                            <p className="text-[10px] font-black text-emerald-600 bg-emerald-50 px-2 py-0.5 rounded-full inline-block uppercase tracking-widest">Collected</p>
+                                        </div>
+                                    </div>
+                                )) : (
+                                    <div className="text-center py-12">
+                                        <div className="w-16 h-16 bg-gray-100 rounded-full flex items-center justify-center mx-auto mb-4">
+                                            <IndianRupee size={32} className="text-gray-300" />
+                                        </div>
+                                        <p className="text-gray-500 font-bold uppercase text-xs tracking-widest">No cash payments collected yet</p>
+                                    </div>
+                                )}
+                            </div>
+                        </div>
+                        
+                        <div className="p-4 bg-gray-50 border-t border-gray-200 text-center">
+                            <button onClick={() => setPaymentDrilldown(false)} className="btn btn-ghost btn-sm font-black text-[10px] uppercase tracking-widest text-gray-500 hover:text-gray-800">Close Window</button>
+                        </div>
+                    </div>
+                </div>
+            )}
+
+            {/* --- ORDER EDIT MODAL --- */}
+            {editOrder && <OrderEditModal order={editOrder} onClose={() => setEditOrder(null)} date={selectedDate} />}
+        </div>
+    );
+};
+
+// =============================================
+// ORDER EDIT MODAL
+// =============================================
+const OrderEditModal = ({ order, onClose, date }) => {
+    const [tab, setTab] = useState("deliveries"); // deliveries | payment
+    const [search, setSearch] = useState("");
+    const [editedProducts, setEditedProducts] = useState(
+        order.products.map(p => ({
+            ...p,
+            deliveredQty: p.quantity,
+            // Try to find if this product had returned bottles in a previous save
+            // Backward compatibility: order.bottlesReturned could be a number
+            collectedItems: typeof order.bottlesReturned === 'object' 
+                ? (order.bottlesReturned[p.product._id || p.product] || 0)
+                : (order.bottlesReturned || 0) 
+        }))
+    );
+    const [paymentAmount, setPaymentAmount] = useState(order.cashCollected !== undefined ? order.cashCollected : order.totalAmount);
+    const [paymentMode, setPaymentMode] = useState(order.paymentMode || "CASH");
+
+    const updateMutation = useMutation({
+        mutationFn: (payload) => {
+            return axiosInstance.patch(`/api/orders/${order._id}/status`, payload);
+        },
+        onSuccess: (data) => {
+            toast.success("Order updated successfully");
+            queryClient.invalidateQueries({ queryKey: ["deliveryDashboard"] });
+            queryClient.invalidateQueries({ queryKey: ["deliveryOrders"] });
+            onClose();
+        },
+        onError: (err) => toast.error(err.response?.data?.message || "Failed to update order"),
+    });
+
+    const handleSave = () => {
+        const payload = {
+            status: "delivered", // Explicitly mark as delivered to trigger payment and bottle logic
+            products: editedProducts.map(p => ({
+                product: p.product._id || p.product,
+                quantity: p.deliveredQty
+            })),
+            bottlesReturned: editedProducts.reduce((acc, p) => {
+                const id = (p.product._id || p.product).toString();
+                acc[id] = p.collectedItems;
+                return acc;
+            }, {}),
+            cashAmount: tab === "payment" ? paymentAmount : 0,
+            paymentMode: paymentMode
+        };
+
+        updateMutation.mutate(payload);
+    };
+
+    const filteredProducts = editedProducts.filter(p => 
+        (p.product.name || "").toLowerCase().includes(search.toLowerCase())
+    );
+
+    return (
+        <div className="fixed inset-0 z-[70] flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm animate-in fade-in duration-300">
+            <div className="bg-white rounded-2xl w-full max-w-2xl shadow-2xl flex flex-col overflow-hidden animate-in zoom-in-95 duration-300 border border-teal-100">
+                {/* Header */}
+                <div className="bg-[#177a66] p-5 flex items-center justify-between text-white">
+                    <div>
+                        <h3 className="text-lg font-black tracking-tight">Customer Delivery And Payment (Date: {format(new Date(date), "dd MMMM, yyyy")})</h3>
+                    </div>
+                    <button onClick={onClose} className="w-8 h-8 rounded-full bg-white/10 flex items-center justify-center hover:bg-white/20 transition-all shadow-sm">
+                        <XCircle size={20} />
+                    </button>
+                </div>
+
+                {/* Tabs */}
+                <div className="flex border-b border-gray-200 px-6 pt-4 bg-gray-50/50">
+                    <button 
+                        onClick={() => setTab("payment")}
+                        className={`px-6 py-3 text-sm font-bold transition-all border-b-2 ${tab === "payment" ? "border-teal-600 text-teal-700 bg-white rounded-t-xl" : "border-transparent text-gray-400 hover:text-gray-600"}`}
+                    >
+                        Add Payment
+                    </button>
+                    <button 
+                        onClick={() => setTab("deliveries")}
+                        className={`px-6 py-3 text-sm font-bold transition-all border-b-2 ${tab === "deliveries" ? "border-teal-600 text-teal-700 bg-white rounded-t-xl" : "border-transparent text-gray-400 hover:text-gray-600"}`}
+                    >
+                        Deliveries
+                    </button>
+                </div>
+
+                <div className="p-6 space-y-6">
+                    {tab === "deliveries" ? (
+                        <div className="space-y-6">
+                            <div className="relative">
+                                <input 
+                                    type="text" 
+                                    placeholder="Search Product" 
+                                    value={search}
+                                    onChange={(e) => setSearch(e.target.value)}
+                                    className="input input-bordered w-full h-10 text-sm bg-white border-teal-600/30 rounded-md focus:border-teal-600"
+                                />
+                            </div>
+
+                            <div className="max-h-[40vh] overflow-y-auto space-y-6 pr-2">
+                                {filteredProducts.map((p, idx) => (
+                                    <div key={idx} className="flex flex-col md:flex-row md:items-start justify-between gap-4 border-b border-gray-100 pb-4">
+                                        <div className="flex-1 min-w-0">
+                                            <p className="font-bold text-gray-600 text-[15px]">{p.product.name}</p>
+                                            <p className="text-[13px] text-gray-400">(Subscribed)</p>
+                                        </div>
+                                        <div className="flex gap-4">
+                                            <div className="w-24">
+                                                <label className="block text-[13px] font-bold text-teal-700 mb-2">Qty Ordered</label>
+                                                <input 
+                                                    type="number" 
+                                                    value={p.quantity} 
+                                                    disabled 
+                                                    className="input input-bordered input-sm w-full bg-gray-100 text-sm font-bold rounded-md text-center h-10" 
+                                                />
+                                            </div>
+                                            <div className="w-24">
+                                                <label className="block text-[13px] font-bold text-teal-700 mb-2">Qty Delivered</label>
+                                                <input 
+                                                    type="number" 
+                                                    value={p.deliveredQty} 
+                                                    onChange={(e) => {
+                                                        const val = Number(e.target.value);
+                                                        setEditedProducts(prev => prev.map((item, i) => i === idx ? { ...item, deliveredQty: val } : item));
+                                                    }}
+                                                    className="input input-bordered input-sm w-full text-sm font-bold bg-white rounded-md text-center h-10 border-teal-600/30" 
+                                                />
+                                            </div>
+                                            <div className="w-24">
+                                                <label className="block text-[13px] font-bold text-teal-700 mb-2">Item Collected</label>
+                                                <input 
+                                                    type="number" 
+                                                    value={p.collectedItems} 
+                                                    onChange={(e) => {
+                                                        const val = Number(e.target.value);
+                                                        setEditedProducts(prev => prev.map((item, i) => i === idx ? { ...item, collectedItems: val } : item));
+                                                    }}
+                                                    className="input input-bordered input-sm w-full text-sm font-bold bg-white rounded-md text-center h-10 border-teal-600/30" 
+                                                />
+                                            </div>
+                                        </div>
+                                    </div>
+                                ))}
+                            </div>
+                        </div>
+                    ) : (
+                        <div className="space-y-6 animate-in slide-in-from-left-4 duration-300">
+                            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                                <div className="space-y-2">
+                                    <label className="text-[13px] font-bold text-teal-700">Payment Amount (₹)</label>
+                                    <input 
+                                        type="number" 
+                                        value={paymentAmount}
+                                        onChange={(e) => setPaymentAmount(Number(e.target.value))}
+                                        className="input input-bordered w-full h-12 text-lg font-bold bg-white border-teal-600/30 rounded-md focus:border-teal-600"
+                                    />
+                                </div>
+                                <div className="space-y-2">
+                                    <label className="text-[13px] font-bold text-teal-700">Payment Mode</label>
+                                    <select 
+                                        value={paymentMode}
+                                        onChange={(e) => setPaymentMode(e.target.value)}
+                                        className="select select-bordered w-full h-12 font-bold rounded-md bg-white border-teal-600/30 focus:border-teal-600"
+                                    >
+                                        <option value="CASH">Cash</option>
+                                        <option value="UPI">UPI</option>
+                                        <option value="WALLET">Wallet</option>
+                                    </select>
+                                </div>
+                            </div>
+                        </div>
+                    )}
+                </div>
+
+                {/* Footer */}
+                <div className="p-6 bg-white flex items-center justify-end gap-3">
+                    <button 
+                        onClick={onClose}
+                        className="btn bg-[#ff7b80] hover:bg-[#ff6b71] border-none text-white px-8 font-bold rounded-full gap-2"
+                    >
+                        <XCircle size={18} />
+                        Close
+                    </button>
+                    <button 
+                        onClick={handleSave}
+                        disabled={updateMutation.isPending}
+                        className="btn bg-[#177a66] hover:bg-[#126151] border-none text-white px-10 font-bold rounded-md gap-2"
+                    >
+                        {updateMutation.isPending ? <RefreshCw size={18} className="animate-spin" /> : <CheckSquare size={18} />}
+                        Save
+                    </button>
+                </div>
+            </div>
         </div>
     );
 };

@@ -1,7 +1,6 @@
 import { axiosInstance } from "./axios";
 
-export const getDeliveryDashboard = async (date) => {
-    const params = date ? { date } : {};
+export const getDeliveryDashboard = async (params = {}) => {
     const { data } = await axiosInstance.get("/api/delivery/dashboard", { params });
     return data;
 };
@@ -17,8 +16,8 @@ export const generateOrdersForDate = async (date) => {
     return data;
 };
 
-export const bulkAssignRider = async ({ orderIds, riderId }) => {
-    const { data } = await axiosInstance.post("/api/delivery/bulk-assign", { orderIds, riderId });
+export const bulkAssignRider = async (payload) => {
+    const { data } = await axiosInstance.post("/api/delivery/bulk-assign", payload);
     return data;
 };
 

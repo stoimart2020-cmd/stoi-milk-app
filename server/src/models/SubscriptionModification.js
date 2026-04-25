@@ -5,12 +5,13 @@ const subscriptionModificationSchema = new mongoose.Schema(
         user: { type: mongoose.Schema.Types.ObjectId, ref: "User", required: true },
         subscription: { type: mongoose.Schema.Types.ObjectId, ref: "Subscription", required: true },
         date: { type: String, required: true }, // YYYY-MM-DD string to avoid timezone issues
-        quantity: { type: Number, required: true, min: 0 }, // 0 means skipped
+        quantity: { type: Number, min: 0 }, // Optional: 0 means skipped, undefined means use default
         status: {
             type: String,
             enum: ["modified", "skipped"],
             default: "modified"
         },
+        assignedRider: { type: mongoose.Schema.Types.ObjectId, ref: "Employee" },
     },
     { timestamps: true }
 );

@@ -53,4 +53,32 @@ router.get('/rate-limit-status', (req, res) => {
     }
 });
 
+/**
+ * @route   POST /api/admin/trigger-cron
+ * @desc    Manually trigger order generation cron jobs
+ * @access  Public (for development/debugging)
+ */
+router.post('/trigger-cron', async (req, res) => {
+    const { processSubscriptionPayments, autoAssignOrders } = require('../jobs/dynamicCronJobs');
+    const { date } = req.body; // Optional date override (YYYY-MM-DD)
+
+    try {
+        console.log(`[ADMIN-TRIGGER] Manually triggering cron jobs${date ? ' for date: ' + date : ''}`);
+        
+        // 1. Generate Orders
+        await processSubscriptionPayments(date);
+        
+        // 2. Auto-Assign
+        await autoAssignOrders(date);
+
+        res.json({
+            success: true,
+            message: 'Cron jobs triggered successfully. Check server logs for details.'
+        });
+    } catch (error) {
+        console.error('[ADMIN-TRIGGER] Failed:', error);
+        res.status(500).json({ success: false, message: error.message });
+    }
+});
+
 module.exports = router;

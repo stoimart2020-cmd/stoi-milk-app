@@ -100,7 +100,15 @@ const processSubscriptionPayments = async (targetDateOverride = null) => {
 
     try {
         // 1. Determine "Tomorrow's" Date
-        const tomorrow = targetDateOverride ? new Date(targetDateOverride) : getTomorrowDate();
+        // If targetDateOverride is a valid date (string or object), use it. 
+        // Otherwise (or if called by cron), default to tomorrow.
+        let tomorrow;
+        if (targetDateOverride && !(targetDateOverride instanceof Date && isNaN(targetDateOverride.getTime())) && typeof targetDateOverride !== 'function') {
+            const potentialDate = new Date(targetDateOverride);
+            tomorrow = isNaN(potentialDate.getTime()) ? getTomorrowDate() : potentialDate;
+        } else {
+            tomorrow = getTomorrowDate();
+        }
         const tomorrowDateStr = formatDate(tomorrow);
 
         // --- DISTRIBUTED DB LOCK ---
@@ -336,7 +344,13 @@ const autoAssignOrders = async (targetDateOverride = null) => {
     console.log('[CRON] Starting Auto-Assignment Job...');
 
     try {
-        const tomorrow = targetDateOverride ? new Date(targetDateOverride) : getTomorrowDate();
+        let tomorrow;
+        if (targetDateOverride && !(targetDateOverride instanceof Date && isNaN(targetDateOverride.getTime())) && typeof targetDateOverride !== 'function') {
+            const potentialDate = new Date(targetDateOverride);
+            tomorrow = isNaN(potentialDate.getTime()) ? getTomorrowDate() : potentialDate;
+        } else {
+            tomorrow = getTomorrowDate();
+        }
         const tomorrowDateStr = formatDate(tomorrow);
 
         // --- DISTRIBUTED DB LOCK ---

@@ -1,4 +1,5 @@
 const Settings = require("../models/Settings");
+const { initializeCronJobs } = require("../jobs/dynamicCronJobs");
 
 exports.getSettings = async (req, res) => {
     try {
@@ -127,6 +128,16 @@ exports.updateSettings = async (req, res) => {
 
         await settings.save();
         console.log('💾 Settings saved successfully');
+
+        // Re-initialize cron jobs if order settings were changed
+        if (section === 'order' || !section) {
+            try {
+                await initializeCronJobs();
+                console.log('🔄 Cron jobs re-initialized with new cutoff settings');
+            } catch (cronError) {
+                console.error('❌ Failed to re-initialize cron jobs:', cronError);
+            }
+        }
 
         res.status(200).json({ success: true, result: settings, message: "Settings updated successfully" });
     } catch (error) {

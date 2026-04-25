@@ -164,6 +164,77 @@ exports.getDeliveryDashboard = async (req, res) => {
             { $sort: { _id: 1 } }
         ]);
 
+        // --- Product Breakdown ---
+        const productBreakdown = await Order.aggregate([
+            { $match: baseMatch },
+            { $unwind: "$products" },
+            {
+                $group: {
+                    _id: "$products.product",
+                    scheduled: { $sum: 1 },
+                    unitCount: { $sum: "$products.quantity" },
+                    pending: {
+                        $sum: {
+                            $cond: [{ $in: ["$status", ["pending", "confirmed"]] }, 1, 0]
+                        }
+                    },
+                    pendingUnits: {
+                        $sum: {
+                            $cond: [{ $in: ["$status", ["pending", "confirmed"]] }, "$products.quantity", 0]
+                        }
+                    },
+                    delivered: {
+                        $sum: {
+                            $cond: [{ $eq: ["$status", "delivered"] }, 1, 0]
+                        }
+                    },
+                    deliveredUnits: {
+                        $sum: {
+                            $cond: [{ $eq: ["$status", "delivered"] }, "$products.quantity", 0]
+                        }
+                    },
+                    cancelled: {
+                        $sum: {
+                            $cond: [{ $eq: ["$status", "cancelled"] }, 1, 0]
+                        }
+                    },
+                    cancelledUnits: {
+                        $sum: {
+                            $cond: [{ $eq: ["$status", "cancelled"] }, "$products.quantity", 0]
+                        }
+                    }
+                }
+            }
+        ]);
+
+        const productIds = productBreakdown.map(p => p._id);
+        const products = await require("../models/Product").find({ _id: { $in: productIds } }).select("name unit category");
+
+        const productStats = productBreakdown.map(pb => {
+            const prod = products.find(p => p._id.toString() === pb._id.toString());
+            return {
+                ...pb,
+                product: prod || { name: "Unknown Product" }
+            };
+        });
+
+        // --- Bottle Stats ---
+        const bottleStats = await Order.aggregate([
+            { $match: { ...baseMatch, status: { $ne: "cancelled" } } },
+            {
+                $group: {
+                    _id: null,
+                    issued: { $sum: "$bottlesIssued" },
+                    returned: { $sum: "$bottlesReturned" }
+                }
+            }
+        ]);
+        const bottles = bottleStats[0] || { issued: 0, returned: 0 };
+        bottles.pending = (bottles.issued || 0) - (bottles.returned || 0);
+
+        // --- Total Payment Collected ---
+        const totalPaymentCollected = riderStats.reduce((sum, r) => sum + (r.cashCollected || 0), 0);
+
         res.status(200).json({
             success: true,
             result: {
@@ -171,8 +242,11 @@ exports.getDeliveryDashboard = async (req, res) => {
                 stats,
                 riderStats,
                 areaStats,
+                productStats,
                 paymentBreakdown,
-                hourlyDeliveries: hourly
+                hourlyDeliveries: hourly,
+                bottleStats: bottles,
+                totalPaymentCollected
             }
         });
     } catch (error) {
@@ -235,19 +309,87 @@ exports.getDeliveryOrders = async (req, res) => {
 // ========================
 exports.bulkAssignRider = async (req, res) => {
     try {
-        const { orderIds, riderId } = req.body;
+        const { orderIds, riderId, assignmentType, endDate, date } = req.body;
 
         if (!orderIds?.length || !riderId) {
             return res.status(400).json({ success: false, message: "orderIds and riderId required" });
         }
 
+        const User = require("../models/User");
+
+        // 1. Update selected orders (Always applies for the selected date)
         await Order.updateMany(
             { _id: { $in: orderIds } },
             { $set: { assignedRider: riderId } }
         );
 
-        res.status(200).json({ success: true, message: `${orderIds.length} orders assigned` });
+        const orders = await Order.find({ _id: { $in: orderIds } }).select("customer deliveryDate");
+        const customerIds = [...new Set(orders.map(o => o.customer.toString()))];
+
+        if (assignmentType === "permanent") {
+            // Update User default rider
+            await User.updateMany(
+                { _id: { $in: customerIds } },
+                { $set: { deliveryBoy: riderId } }
+            );
+
+            // Update Subscription default rider
+            await Subscription.updateMany(
+                { user: { $in: customerIds } },
+                { $set: { assignedRider: riderId } }
+            );
+
+            // Update Employee routes
+            // Remove from all other riders
+            await Employee.updateMany(
+                { role: "RIDER" },
+                { $pull: { route: { $in: customerIds } } }
+            );
+            // Add to new rider
+            await Employee.findByIdAndUpdate(riderId, {
+                $addToSet: { route: { $each: customerIds } }
+            });
+        } 
+        else if (assignmentType === "temporary" && endDate && date) {
+            const start = new Date(date);
+            const end = new Date(endDate);
+            
+            // Loop through each date in the range
+            for (let d = new Date(start); d <= end; d.setDate(d.getDate() + 1)) {
+                const dStr = d.toISOString().split('T')[0];
+                const dStart = new Date(dStr + 'T00:00:00.000Z');
+                const dEnd = new Date(dStr + 'T23:59:59.999Z');
+
+                // Update existing orders in this range
+                await Order.updateMany(
+                    { customer: { $in: customerIds }, deliveryDate: { $gte: dStart, $lte: dEnd } },
+                    { $set: { assignedRider: riderId } }
+                );
+
+                // Create/Update modifications for future generations
+                const subscriptions = await Subscription.find({ user: { $in: customerIds }, status: 'active' });
+                for (const sub of subscriptions) {
+                    await SubscriptionModification.findOneAndUpdate(
+                        { subscription: sub._id, date: dStr },
+                        { 
+                            user: sub.user, 
+                            subscription: sub._id, 
+                            date: dStr, 
+                            assignedRider: riderId,
+                            status: 'modified'
+                        },
+                        { upsert: true }
+                    );
+                }
+            }
+        }
+
+        res.status(200).json({ 
+            success: true, 
+            message: `${orderIds.length} orders updated ${assignmentType === 'today' ? 'for today' : assignmentType}` 
+        });
     } catch (error) {
+        console.error('[BULK_ASSIGN] Error:', error);
         res.status(500).json({ success: false, message: error.message });
     }
 };
@@ -332,7 +474,7 @@ exports.generateOrdersForDate = async (req, res) => {
                     date: targetDateStr
                 });
 
-                if (modification) {
+                if (modification && modification.quantity !== undefined) {
                     if (modification.status === 'skipped' || modification.quantity === 0) {
                         skipped++;
                         continue;
@@ -394,8 +536,8 @@ exports.generateOrdersForDate = async (req, res) => {
                 const totalAmount = price * quantity;
                 const bottlesIssued = sub.product.reverseLogistic ? quantity : 0;
 
-                // Determine rider: subscription's assignedRider → customer's deliveryBoy → rider route map
-                const riderId = sub.assignedRider || sub.user.deliveryBoy || customerRiderMap[sub.user._id.toString()] || null;
+                // Determine rider: modification's assignedRider → subscription's assignedRider → customer's deliveryBoy → rider route map
+                const riderId = modification?.assignedRider || sub.assignedRider || sub.user.deliveryBoy || customerRiderMap[sub.user._id.toString()] || null;
 
                 await Order.create({
                     customer: sub.user._id,
